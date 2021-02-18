@@ -156,7 +156,7 @@ class Vortector:
 
             if found_mirror:
                 if to_del is not None:
-                    del self.contours_closed[n]
+                    del self.contours_closed[to_del]
                     self.contours_closed.append(contour)
             else:
                 self.contours_closed.append(contour)
