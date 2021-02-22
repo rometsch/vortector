@@ -141,6 +141,11 @@ class Vortector:
             bounding_vert = np.array([topmost[1], bottommost[1]])
             contour["bounding_hor"] = bounding_hor
             contour["bounding_vert"] = bounding_vert
+            # save the bounding points
+            contour["bottom_extended"] = bottommost
+            contour["top_extended"] = topmost
+            contour["left_extended"] = leftmost
+            contour["right_extended"] = rightmost
 
             to_del = None
             found_mirror = False
@@ -214,6 +219,23 @@ class Vortector:
                     mask = mask[:, ::self.int_aspect]
             mask = np.array(mask, dtype=bool)
             contour["mask"] = mask
+
+            # map the bounding points to view and data shape
+            for key in ["bottom", "top", "left", "right"]:
+                pnt = contour[key + "_extended"]
+                x, y = map_ext_pnt_to_orig(pnt, Nq)
+                y = 2*Nq - y
+                x /= self.supersample
+                y /= self.supersample
+                if self.Nx < self.Ny:
+                    x /= self.int_aspect
+                else:
+                    y /= self.int_aspect
+                x = int(x)
+                y = int(y)
+                contour[key + "_view"] = (x, y)
+                contour[key] = (x + self.vmi, y)
+
         if self.verbose:
             print(
                 f"Mapping mask: mask.shape = {mask.shape}, mask_orig.shape {mask_orig.shape}")
@@ -359,6 +381,15 @@ class Vortector:
                     self.Rho_background_view[mask])
                 contour["sigma0_min"] = np.min(self.Rho_background_view[mask])
                 contour["sigma0_max"] = np.max(self.Rho_background_view[mask])
+                contour["rmax"] = self.Xc_view[contour["left_view"]]
+                contour["rmin"] = self.Xc_view[contour["right_view"]]
+                contour["phimin"] = self.Yc_view[contour["top_view"]]
+                contour["phimax"] = self.Yc_view[contour["bottom_view"]]
+                if contour["phimax"] < contour["phimin"]:
+                    contour["height"] = contour["phimax"] + \
+                        2*np.pi - contour["phimin"]
+                else:
+                    contour["height"] = contour["phimax"] - contour["phimin"]
 
             except ValueError:
                 pass
@@ -506,3 +537,15 @@ def fig2rgb_array(fig):
     buf = fig.canvas.tostring_rgb()
     ncols, nrows = fig.canvas.get_width_height()
     return np.fromstring(buf, dtype=np.uint8).reshape(nrows, ncols, 3)
+
+
+def map_ext_pnt_to_orig(pnt, Nq):
+    x = pnt[0]
+    y = pnt[1]
+    if y > Nq and y <= 3*Nq:
+        y -= Nq
+    elif y < Nq:
+        y += Nq
+    elif y > 3*Nq:
+        y -= 3*Nq
+    return (x, y)
