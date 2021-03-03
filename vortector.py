@@ -1,6 +1,7 @@
-import numpy as np
 import cv2
 import matplotlib.pyplot as plt
+import numpy as np
+from scipy.optimize import curve_fit
 
 
 class Vortector:
@@ -366,8 +367,45 @@ class Vortector:
                 self.calc_vortensity_flux(c)
                 self.find_vortensity_min_position(c)
                 self.find_density_max_position(c)
+                self.fit_gaussians(c)
             except ValueError:
                 pass
+
+    def fit_gaussians(self, c):
+
+        vals = self.Rho_view
+
+        inds = c["vortensity_min_inds"]
+        mask = c["mask"]
+        mask_r = mask[:, inds[1]]
+        mask_phi = mask[inds[0], :]
+
+        names = ["sigma", "vortensity", "vorticity"]
+        arrays = [self.Rho_view, self.vortensity_view]
+
+        r = self.Xc_view[:, inds[1]]
+        phi = self.Yc_view[inds[0], :]
+
+        for name, vals in zip(names, arrays):
+            vals_r = vals[:, inds[1]]
+            vals_phi = vals[inds[0], :]
+
+            x = r[mask_r]
+            y = vals_r[mask_r]
+            popt, pcov = fit_gauss(x, y)
+
+            c[name + "_fit_r_y0"] = popt[0]
+            c[name + "_fit_r_a"] = popt[1]
+            c[name + "_fit_r_x0"] = popt[2]
+            c[name + "_fit_r_sigma"] = popt[3]
+
+            x, y = combine_periodic(phi, vals_phi, mask_phi)
+            popt, pcov = fit_gauss(x, y)
+
+            c[name + "_fit_phi_y0"] = popt[0]
+            c[name + "_fit_phi_a"] = popt[1]
+            c[name + "_fit_phi_x0"] = popt[2]
+            c[name + "_fit_phi_sigma"] = popt[3]
 
     def calc_vortex_mass(self, c):
         mask = c["mask"]
@@ -561,3 +599,113 @@ def map_ext_pnt_to_orig(pnt, Nq):
     elif y > 3*Nq:
         y -= 3*Nq
     return (x, y)
+
+
+def combine_periodic(x, y, m, lb=-np.pi, rb=np.pi):
+    """ Combine an array split at a periodic boundary. 
+
+    This is used for vortices that stretch over the periodic boundary
+    in azimuthal directions in disks.
+    The x values at the left boundary are appended to the right of the
+    values at the right boundary and the periodicity is added.
+
+    The following sketch shows how the arrays are combined.
+
+    |+++++_________xxx|
+    to
+    |______________xxx|+++++
+
+    Parameters
+    ----------
+    x: array
+        Coordinate values (full domain).
+    y: array
+        Values (full domain).
+    m: array (boolean)
+        Mask to select the active values.
+    lb: float
+        Position of the left boundary.
+    rb: float
+        Position of the right boundary.
+
+    Returns
+    -------
+    x : array
+        coordinates
+    y : array
+        values
+    """
+    if m[0] and m[-1] and not all(m):
+        bnd = np.where(m == False)[0][0]
+        xl = x[:bnd]
+        yl = y[:bnd]
+        bnd = np.where(m == False)[0][-1]
+        xr = x[bnd:]
+        yr = y[bnd:]
+        xcom = np.append(xr, xl+(rb-lb))
+        ycom = np.append(yr, yl)
+        return xcom, ycom
+    else:
+        return x[m], y[m]
+
+
+def gauss(x, y0, a, x0, sigma):
+    """ A gaussian bell function.
+
+    Parameters
+    ----------
+    x: array
+        Coordinates
+    y0: float
+        Offset
+    a: float
+        Amplitute
+    x0: float
+        Center of the bell curve.
+    sigma : float
+        Standard deviation.
+
+    Returns
+    -------
+    array
+        Function values.  
+    """
+    return a * np.exp(-(x - x0)**2 / (2 * sigma**2)) + y0
+
+
+def fit_gauss(x, y, double_fit=False):
+    """ Fit a gaussian to the data.
+
+    Parameters
+    ----------
+    x : array
+        Positions
+    y : array
+        Values
+    double_fit : bool
+        Perform two fits using deviations from first fit as weights.
+
+    Returns
+    -------
+    popt : array
+        Optimal parameter
+    pcov : 2-D array
+        Estimated covariance of popt
+
+    """
+    blow = [-10*np.max(np.abs(y)), -10*np.max(np.abs(y)), -
+            np.inf, (x[-1]-x[0])/20]
+    bup = [10*np.max(np.abs(y)), 10*np.max(np.abs(y)), np.inf, (x[-1]-x[0])/2]
+    mean = sum(x * y) / sum(y)
+    sigma = np.sqrt(sum(y * (x - mean)**2) / sum(y))
+    popt, pcov = curve_fit(gauss, x, y, p0=[np.average(y), y[int(len(y)/2)], mean, sigma],
+                           bounds=(blow, bup))
+    if double_fit:
+        peak_value = popt[0] + popt[1]  # y0 + a
+        print("popt", popt)
+        print("peak_value", peak_value)
+        difference = np.abs(y - peak_value)
+        inv_weights = np.maximum(difference, np.max(difference)*1e-5)
+        popt, pcov = curve_fit(gauss, x, y, p0=[np.average(y), y[int(len(y)/2)], mean, sigma],
+                               sigma=inv_weights, bounds=(blow, bup))
+    return popt, pcov
