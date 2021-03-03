@@ -357,76 +357,87 @@ class Vortector:
     def calculate_vortex_properties(self):
         # Get the mass and vortensity inside the candidates
 
-        for contour in self.candidates.values():
-            mask = contour["mask"]
+        for c in self.candidates.values():
             try:
-                contour["mass"] = np.sum(self.mass_view[mask])
-                contour["mass_background"] = np.sum(
-                    self.mass_background_view[mask])
-                contour["mass_enhancement"] = contour["mass"] - \
-                    contour["mass_background"]
-                contour["vortensity_mean"] = np.mean(
-                    self.vortensity_view[mask])
-                contour["vortensity_median"] = np.median(
-                    self.vortensity_view[mask])
-                contour["vortensity_min"] = np.min(self.vortensity_view[mask])
-                contour["vortensity_max"] = np.max(self.vortensity_view[mask])
-                contour["sigma_mean"] = np.mean(self.Rho_view[mask])
-                contour["sigma_median"] = np.median(self.Rho_view[mask])
-                contour["sigma_min"] = np.min(self.Rho_view[mask])
-                contour["sigma_max"] = np.max(self.Rho_view[mask])
-                contour["sigma0_mean"] = np.mean(
-                    self.Rho_background_view[mask])
-                contour["sigma0_median"] = np.median(
-                    self.Rho_background_view[mask])
-                contour["sigma0_min"] = np.min(self.Rho_background_view[mask])
-                contour["sigma0_max"] = np.max(self.Rho_background_view[mask])
-                contour["rmax"] = self.Xc_view[contour["left_view"]]
-                contour["rmin"] = self.Xc_view[contour["right_view"]]
-                contour["phimin"] = self.Yc_view[contour["top_view"]]
-                contour["phimax"] = self.Yc_view[contour["bottom_view"]]
-                if contour["phimax"] < contour["phimin"]:
-                    contour["height"] = contour["phimax"] + \
-                        2*np.pi - contour["phimin"]
-                else:
-                    contour["height"] = contour["phimax"] - contour["phimin"]
-
+                self.calc_vortex_mass(c)
+                self.calc_vortensity(c)
+                self.calc_sigma(c)
+                self.calc_vortex_extent(c)
+                self.calc_vortensity_flux(c)
+                self.find_vortensity_min_position(c)
+                self.find_density_max_position(c)
             except ValueError:
                 pass
 
-        self.find_vortensity_min_position()
-        self.find_density_max_position()
+    def calc_vortex_mass(self, c):
+        mask = c["mask"]
+        c["mass"] = np.sum(self.mass_view[mask])
+        c["mass_background"] = np.sum(self.mass_background_view[mask])
+        c["mass_enhancement"] = c["mass"] - c["mass_background"]
 
-    def find_vortensity_min_position(self):
+    def calc_vortensity(self, c):
+        mask = c["mask"]
+        c["vortensity_mean"] = np.mean(self.vortensity_view[mask])
+        c["vortensity_median"] = np.median(self.vortensity_view[mask])
+        c["vortensity_min"] = np.min(self.vortensity_view[mask])
+        c["vortensity_max"] = np.max(self.vortensity_view[mask])
+
+    def calc_sigma(self, c):
+        mask = c["mask"]
+        c["sigma_mean"] = np.mean(self.Rho_view[mask])
+        c["sigma_median"] = np.median(self.Rho_view[mask])
+        c["sigma_min"] = np.min(self.Rho_view[mask])
+        c["sigma_max"] = np.max(self.Rho_view[mask])
+        c["sigma0_mean"] = np.mean(self.Rho_background_view[mask])
+        c["sigma0_median"] = np.median(self.Rho_background_view[mask])
+        c["sigma0_min"] = np.min(self.Rho_background_view[mask])
+        c["sigma0_max"] = np.max(self.Rho_background_view[mask])
+
+    def calc_vortex_extent(self, c):
+        mask = c["mask"]
+        c["area"] = np.sum(self.cell_area_view[mask])
+        c["rmax"] = self.Xc_view[c["left_view"]]
+        c["rmin"] = self.Xc_view[c["right_view"]]
+        c["phimin"] = self.Yc_view[c["top_view"]]
+        c["phimax"] = self.Yc_view[c["bottom_view"]]
+        if c["phimax"] < c["phimin"]:
+            c["height"] = c["phimax"] + 2*np.pi - c["phimin"]
+        else:
+            c["height"] = c["phimax"] - c["phimin"]
+
+    def calc_vortensity_flux(self, c):
+        mask = c["mask"]
+        A = self.cell_area_view
+        c["vortensity_flux"] = np.sum((A*self.vortensity_view)[mask])
+        c["vortensity_exp_flux"] = np.sum(
+            (A*np.exp(-self.vortensity_view))[mask])
+
+    def find_vortensity_min_position(self, contour):
         # Calculate the position of minimum vortensity
+        mask = np.logical_not(contour["mask"])
+        ind = np.argmin(np.ma.masked_array(
+            self.vortensity_view, mask=mask), axis=None)
+        inds = np.unravel_index(ind, mask.shape)
+        x = self.Xc_view[inds]
+        y = self.Yc_view[inds]
+        contour["vortensity_min_pos"] = (x, y)
+        contour["vortensity_min_inds"] = inds
+        if self.verbose:
+            print(f"Location of minimum vortensity: (x,y) = ({x}, {y})")
 
-        for contour in self.candidates.values():
-            mask = np.logical_not(contour["mask"])
-            ind = np.argmin(np.ma.masked_array(
-                self.vortensity_view, mask=mask), axis=None)
-            inds = np.unravel_index(ind, mask.shape)
-            x = self.Xc_view[inds]
-            y = self.Yc_view[inds]
-            contour["vortensity_min_pos"] = (x, y)
-            contour["vortensity_min_inds"] = inds
-            if self.verbose:
-                print(f"Location of minimum vortensity: (x,y) = ({x}, {y})")
-
-    def find_density_max_position(self):
+    def find_density_max_position(self, contour):
         # Calculate the position of maximum density
-
-        for contour in self.candidates.values():
-            mask = np.logical_not(contour["mask"])
-            ind = np.argmax(np.ma.masked_array(
-                self.Rho_view, mask=mask), axis=None)
-            inds = np.unravel_index(ind, mask.shape)
-            x = self.Xc_view[inds]
-            y = self.Yc_view[inds]
-            contour["sigma_max_pos"] = (x, y)
-            contour["sigma_max_inds"] = inds
-            if self.verbose:
-                print(
-                    f"Location of maximum surface density (x,y) = ({x}, {y})")
+        mask = np.logical_not(contour["mask"])
+        ind = np.argmax(np.ma.masked_array(
+            self.Rho_view, mask=mask), axis=None)
+        inds = np.unravel_index(ind, mask.shape)
+        x = self.Xc_view[inds]
+        y = self.Yc_view[inds]
+        contour["sigma_max_pos"] = (x, y)
+        contour["sigma_max_inds"] = inds
+        if self.verbose:
+            print(
+                f"Location of maximum surface density (x,y) = ({x}, {y})")
 
     def sort_vortices_by_mass(self):
         """ Sort the candidates by mass decending. """
@@ -505,12 +516,21 @@ class Vortector:
 
         self.sort_vortices_by_mass()
 
-        # Print out some properties
         if self.verbose:
             self.print_properties()
 
-        # Remove intermediate data and return
-        vortices = []
+        self.remove_intermediate_data(include_mask, keep_internals)
+
+        # Return vortices
+        return self.vortices
+
+    def show_contours(self):
+        """ Plot the contour image. """
+        _, ax = plt.subplots()
+        ax.imshow(self.thresh)
+
+    def remove_intermediate_data(self, include_mask=False, keep_internals=False):
+        self.vortices = []
         for c in self.candidates.values():
             if not keep_internals:
                 for key in ["cnt", "mask_extended", "bounding_hor",
@@ -521,15 +541,7 @@ class Vortector:
                 c["mask"] = self.construct_global_mask(c)
             else:
                 del c["mask"]
-            vortices.append(c)
-
-        # Return vortices
-        return vortices
-
-    def show_contours(self):
-        """ Plot the contour image. """
-        _, ax = plt.subplots()
-        ax.imshow(self.thresh)
+            self.vortices.append(c)
 
 
 def fig2rgb_array(fig):
