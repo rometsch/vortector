@@ -673,7 +673,7 @@ def gauss(x, y0, a, x0, sigma):
     return a * np.exp(-(x - x0)**2 / (2 * sigma**2)) + y0
 
 
-def fit_gauss(x, y, double_fit=False):
+def fit_gauss(x, y, double_fit=True):
     """ Fit a gaussian to the data.
 
     Parameters
@@ -702,10 +702,8 @@ def fit_gauss(x, y, double_fit=False):
                            bounds=(blow, bup))
     if double_fit:
         peak_value = popt[0] + popt[1]  # y0 + a
-        print("popt", popt)
-        print("peak_value", peak_value)
         difference = np.abs(y - peak_value)
-        inv_weights = np.maximum(difference, np.max(difference)*1e-5)
+        w = np.exp(-difference/np.max(difference))
         popt, pcov = curve_fit(gauss, x, y, p0=[np.average(y), y[int(len(y)/2)], mean, sigma],
-                               sigma=inv_weights, bounds=(blow, bup))
+                               sigma=w, bounds=(blow, bup))
     return popt, pcov
