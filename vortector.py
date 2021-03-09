@@ -307,8 +307,8 @@ class Vortector:
 
     def remove_non_vortex_candidates(self):
         """ Remove candidates not having vortex properties
-        A vortex should have at least a small dip in vortensity. 
-        Exclude vortices for which the minimum vorticity is not at least 0.05 lower than the maximum vorticity. 
+        A vortex should have at least a small dip in vortensity.
+        Exclude vortices for which the minimum vorticity is not at least 0.05 lower than the maximum vorticity.
         Also check that vortensity < 1
         """
 
@@ -335,7 +335,7 @@ class Vortector:
             del self.candidates[n]
 
     def remove_duplicates_by_min_vort_pos(self):
-        """ Remove remaining duplicates. 
+        """ Remove remaining duplicates.
 
         Because of the way the mirror counter lines are generated,
         the mirror shape can be shifted slightly.
@@ -372,9 +372,6 @@ class Vortector:
                 pass
 
     def fit_gaussians(self, c):
-
-        vals = self.Rho_view
-
         inds = c["vortensity_min_inds"]
         mask = c["mask"]
         mask_r = mask[:, inds[1]]
@@ -392,7 +389,17 @@ class Vortector:
 
             x = r[mask_r]
             y = vals_r[mask_r]
-            popt, pcov = fit_gauss(x, y)
+
+            fixed = {}
+            blow = {}
+
+            if name == "sigma":
+                blow["y0"] = 0
+            else:
+                fixed["y0"] = 1
+
+            fitter = GaussFitter(x, y, autoweight=True, fixed=fixed, blow=blow)
+            popt, pcov = fitter.fit()
 
             c[name + "_fit_r_y0"] = popt[0]
             c[name + "_fit_r_a"] = popt[1]
@@ -400,12 +407,93 @@ class Vortector:
             c[name + "_fit_r_sigma"] = popt[3]
 
             x, y = combine_periodic(phi, vals_phi, mask_phi)
-            popt, pcov = fit_gauss(x, y)
+            fitter = GaussFitter(x, y, autoweight=True, fixed=fixed, blow=blow)
+            popt, pcov = fitter.fit()
 
             c[name + "_fit_phi_y0"] = popt[0]
             c[name + "_fit_phi_a"] = popt[1]
             c[name + "_fit_phi_x0"] = popt[2]
             c[name + "_fit_phi_sigma"] = popt[3]
+
+    def fit_vortensity(self, c):
+        """ Fit a gaussian to vortensity slices in radial and azimuthal direction.
+
+        Parameters
+        ----------
+        c : dict
+            Vortex candidate.
+        """
+        vals_r = vals[:, inds[1]]
+        vals_phi = vals[inds[0], :]
+
+        x = r[mask_r]
+        y = vals_r[mask_r]
+
+        fixed = {}
+        blow = {}
+
+        if name == "sigma":
+            blow["y0"] = 0
+        else:
+            fixed["y0"] = 1
+
+        fitter = GaussFitter(x, y, autoweight=True, fixed=fixed, blow=blow)
+        popt, pcov = fitter.fit()
+
+        c[name + "_fit_r_y0"] = popt[0]
+        c[name + "_fit_r_a"] = popt[1]
+        c[name + "_fit_r_x0"] = popt[2]
+        c[name + "_fit_r_sigma"] = popt[3]
+
+        x, y = combine_periodic(phi, vals_phi, mask_phi)
+        fitter = GaussFitter(x, y, autoweight=True, fixed=fixed, blow=blow)
+        popt, pcov = fitter.fit()
+
+        c[name + "_fit_phi_y0"] = popt[0]
+        c[name + "_fit_phi_a"] = popt[1]
+        c[name + "_fit_phi_x0"] = popt[2]
+        c[name + "_fit_phi_sigma"] = popt[3]
+
+    def fit_gaussian_r(self, c, key, ref="contour"):
+        """ Fit a gaussian in r direction.
+
+        Fit a region in r direction either specified by the mask
+        generated from the contour or from a previous fit.
+        This is controlled with the ref parameter which can be:
+        contour, vortensity, sigma
+
+        Parameters
+        ----------
+        c : dict
+            Vortex candidate.
+        key : str
+            Name of the variable for fitting.
+        ref : str
+            Name of the variable to take the mask from.
+        """
+        inds, mask_r, mask_phi = select_fit_region(c, ref)
+
+        vals_r = vals[:, inds[1]]
+        vals_phi = vals[inds[0], :]
+
+        x = r[mask_r]
+        y = vals_r[mask_r]
+
+        fixed = {}
+        blow = {}
+
+        if name == "sigma":
+            blow["y0"] = 0
+        else:
+            fixed["y0"] = 1
+
+        fitter = GaussFitter(x, y, autoweight=True, fixed=fixed, blow=blow)
+        popt, pcov = fitter.fit()
+
+        c[name + "_fit_r_y0"] = popt[0]
+        c[name + "_fit_r_a"] = popt[1]
+        c[name + "_fit_r_x0"] = popt[2]
+        c[name + "_fit_r_sigma"] = popt[3]
 
     def calc_vortex_mass(self, c):
         mask = c["mask"]
@@ -601,6 +689,49 @@ def map_ext_pnt_to_orig(pnt, Nq):
     return (x, y)
 
 
+def select_fit_region(c, ref):
+    """ Select the indices and masks which indicate the fit region.
+
+    The source which specifies the vortex region is either
+    the extracted contour or the fits of vortensity or surface density.
+    ref = contour, vortensity, sigma
+
+
+    Parameters
+    ----------
+    c : dict
+        Vortex candidate.
+    ref : str
+        Name of the variable to take the mask from.
+
+    Returns
+    -------
+    inds : tuple of two int
+        Radial and azimuthal index of center.
+    mask_r : array of bool
+        Mask indicating vortex region in radial direction.
+    mask_phi : array of bool
+        Mask indicating vortex region in azimuthal direction.
+    """
+    if ref == "contour":
+        inds = c["vortensity_min_inds"]
+        mask = c["mask"]
+        mask_r = mask[:, inds[1]]
+        mask_phi = mask[inds[0], :]
+    elif ref == "vortensity":
+        inds = (c["fit_vortensity_center_r_ind"],
+                c["fit_vortensity_center_phi_ind"])
+        mask_r = c["fit_vortensity_mask_r"]
+        mask_phi = c["fit_vortensity_mask_phi"]
+    elif ref == "sigma":
+        inds = (c["fit_sigma_center_r_ind"], c["fit_sigma_center_phi_ind"])
+        mask_r = c["fit_sigma_mask_r"]
+        mask_phi = c["fit_sigma_mask_phi"]
+    else:
+        raise AttributeError(f"'{ref}' is not a valid reference for fitting.")
+    return inds, mask_r, mask_phi
+
+
 def combine_periodic(x, y, m, lb=-np.pi, rb=np.pi):
     """ Combine an array split at a periodic boundary. 
 
@@ -673,7 +804,8 @@ def gauss(x, y0, a, x0, sigma):
     return a * np.exp(-(x - x0)**2 / (2 * sigma**2)) + y0
 
 
-def fit_gauss(x, y, double_fit=True):
+def fit_gauss(x, y, y0=None, a=None, w=None, autoweight=True,
+              blow=[None]*4, bup=[None]*4):
     """ Fit a gaussian to the data.
 
     Parameters
@@ -682,8 +814,14 @@ def fit_gauss(x, y, double_fit=True):
         Positions
     y : array
         Values
-    double_fit : bool
+    autoweight : bool
         Perform two fits using deviations from first fit as weights.
+    y0 : float
+        Fixed value for offset.
+    a : float
+        Fixed value for amplitude.
+    w : array
+        Weights for the fit.
 
     Returns
     -------
@@ -693,17 +831,130 @@ def fit_gauss(x, y, double_fit=True):
         Estimated covariance of popt
 
     """
-    blow = [-10*np.max(np.abs(y)), -10*np.max(np.abs(y)), -
-            np.inf, (x[-1]-x[0])/20]
-    bup = [10*np.max(np.abs(y)), 10*np.max(np.abs(y)), np.inf, (x[-1]-x[0])/2]
+
+    blow_def = [-10*np.max(np.abs(y)), -10 *
+                np.max(np.abs(y)), x[0], (x[-1]-x[0])/10]
+    bup_def = [10*np.max(np.abs(y)), 10*np.max(np.abs(y)),
+               x[-1], 10*(x[-1]-x[0])]
+
+    blow_def = [-np.inf]*4
+    bup_def = [np.inf]*4
+
+    blow = [v if v is not None else d for v, d in zip(blow, blow_def)]
+    bup = [v if v is not None else d for v, d in zip(bup, bup_def)]
+
     mean = sum(x * y) / sum(y)
     sigma = np.sqrt(sum(y * (x - mean)**2) / sum(y))
-    popt, pcov = curve_fit(gauss, x, y, p0=[np.average(y), y[int(len(y)/2)], mean, sigma],
-                           bounds=(blow, bup))
-    if double_fit:
-        peak_value = popt[0] + popt[1]  # y0 + a
-        difference = np.abs(y - peak_value)
-        w = np.exp(-difference/np.max(difference))
-        popt, pcov = curve_fit(gauss, x, y, p0=[np.average(y), y[int(len(y)/2)], mean, sigma],
-                               sigma=w, bounds=(blow, bup))
+
+    if y0 is not None and a is not None:
+        def f(x, x0, sig): return gauss(x, y0, a, x0, sig)
+        p0 = [mean, sigma]
+        blow = blow[2:]
+        bup = bup[2:]
+        popt, pcov = curve_fit(f, x, y, p0=p0, bounds=(blow, bup), sigma=w)
+        popt = [y0, a, popt[0], popt[1]]
+    elif y0 is not None:
+        def f(x, a, x0, sig): return gauss(x, y0, a, x0, sig)
+        p0 = [np.average(y), mean, sigma]
+        blow = blow[1:]
+        bup = bup[1:]
+        popt, pcov = curve_fit(f, x, y, p0=p0, bounds=(blow, bup), sigma=w)
+        popt = [y0, popt[0], popt[1], popt[2]]
+    else:
+        f = gauss
+        p0 = [np.average(y), y[int(len(y)/2)], mean, sigma]
+        popt, pcov = curve_fit(f, x, y, p0=p0, bounds=(blow, bup), sigma=w)
+
+    if autoweight:
+        return fit_gauss(x, y, y0=y0, a=a, w=w, autoweight=False)
+
+    print("r0 min/max/fit =", blow[-2], bup[-2], popt[-2])
+    print("sigma min/max/fit =", blow[-1], bup[-1], popt[-1])
     return popt, pcov
+
+
+class GaussFitter:
+    def __init__(self, x, y, weights=None, autoweight=True, blow=dict(), bup=dict(), fixed=dict()):
+        self.x = x
+        self.y = y
+        self.autoweight = autoweight
+        self.weights = weights
+
+        self.parameters = ["y0", "a", "x0", "sigma"]
+
+        self.blow = {key: -np.inf for key in self.parameters}
+        self.bup = {key: np.inf for key in self.parameters}
+
+        self.blow["sigma"] = 0
+        self.blow["x0"] = np.min(x)
+        self.bup["x0"] = np.max(x)
+
+        for key, val in blow.items():
+            self.set_lower_bound(key, val)
+        for key, val in bup.items():
+            self.set_upper_bound(key, val)
+
+        self.fixed = fixed
+
+    def set_lower_bound(self, key, value):
+        if not key in self.parameters:
+            raise KeyError(f"{key} is not a member of the lower bounds dict.")
+        self.blow[key] = value
+
+    def set_upper_bound(self, key, value):
+        if not key in self.parameters:
+            raise KeyError(f"{key} is not a member of the upper bounds dict.")
+        self.bup[key] = value
+
+    def set_fixed(self, key, value):
+        if not key in self.parameters:
+            raise KeyError(f"{key} is not a valid parameter.")
+        self.fixed[key] = value
+
+    def fit(self):
+        popt, pcov = self.fit_single()
+
+        if self.weights is None and self.autoweight:
+            peak_value = popt[0] + popt[1]  # y0 + a
+            self.calc_weights(peak_value)
+            popt, pcov = self.fit_single()
+        return popt, pcov
+
+    def calc_weights(self, peak_value):
+        difference = np.abs(self.y - peak_value)
+        self.weights = np.exp(-difference/np.max(difference))
+
+    def fit_single(self):
+        x = self.x
+        y = self.y
+        fixed = self.fixed
+        weights = self.weights
+        lower = [self.blow[key] for key in self.parameters]
+        upper = [self.bup[key] for key in self.parameters]
+
+        mean = sum(x * y) / sum(y)
+        sigma = np.sqrt(sum(y * (x - mean)**2) / sum(y))
+
+        if "y0" in fixed and "a" in fixed:
+            def f(x, x0, sig): return gauss(
+                x, fixed["y0"], fixed["a"], x0, sig)
+            p0 = [mean, sigma]
+            bounds = (lower[2:], upper[2:])
+            popt, pcov = curve_fit(
+                f, x, y, p0=p0, bounds=bounds, sigma=weights)
+            popt = [fixed["y0"], fixed["a"], popt[0], popt[1]]
+        elif "y0" in fixed:
+            def f(x, a, x0, sig): return gauss(x, fixed["y0"], a, x0, sig)
+            p0 = [np.average(y), mean, sigma]
+            bounds = (lower[1:], upper[1:])
+            popt, pcov = curve_fit(
+                f, x, y, p0=p0, bounds=bounds, sigma=weights)
+            popt = [fixed["y0"], popt[0], popt[1], popt[2]]
+        else:
+            f = gauss
+            p0 = [np.average(y), y[int(len(y)/2)], mean, sigma]
+            bounds = (lower, upper)
+            popt, pcov = curve_fit(
+                f, x, y, p0=p0, bounds=bounds, sigma=weights)
+
+        return popt, pcov
