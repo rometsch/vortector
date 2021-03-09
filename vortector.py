@@ -18,6 +18,8 @@ class Vortector:
         self.Phic = Yc
         self.cell_area = A
 
+        self.azimuthal_boundaries = [-np.pi, np.pi]
+
         # Parameters
         self.Rlims = Rlims
         self.levels = levels
@@ -219,7 +221,7 @@ class Vortector:
                 else:
                     mask = mask[:, ::self.int_aspect]
             mask = np.array(mask, dtype=bool)
-            contour["mask"] = mask
+            contour["mask_view"] = mask
 
             # map the bounding points to view and data shape
             for key in ["bottom", "top", "left", "right"]:
@@ -368,93 +370,102 @@ class Vortector:
                 self.find_vortensity_min_position(c)
                 self.find_density_max_position(c)
                 self.fit_gaussians(c)
-            except ValueError:
-                pass
+            except ValueError as e:
+                print(e)
 
     def fit_gaussians(self, c):
-        inds = c["vortensity_min_inds"]
-        mask = c["mask"]
-        mask_r = mask[:, inds[1]]
-        mask_phi = mask[inds[0], :]
+        print("fitting gaussians")
+        popt = self.fit_gaussian_phi(
+            c, "vortensity", ref="contour", fix_avg=True)
+        popt = self.fit_gaussian_r(c, "vortensity", ref="contour", fixed={
+                                   "y0": popt[0], "a": popt[1]})
 
-        names = ["sigma", "vortensity", "vorticity"]
-        arrays = [self.Rho_view, self.vortensity_view]
+        # popt = self.fit_gaussian_phi(c, "sigma", ref="vortensity", blow={"y0" : 1e-10, "a" : 1e-10})
+        popt = self.fit_gaussian_phi(
+            c, "sigma", ref="vortensity", fixed={"y0": 0})
+        popt = self.fit_gaussian_r(c, "sigma", ref="vortensity", fixed={
+                                   "y0": popt[0], "a": popt[1]})
 
-        r = self.Xc_view[:, inds[1]]
-        phi = self.Yc_view[inds[0], :]
+        # for n in range(5):
+        #     try:
+        #         popt = self.fit_gaussian_phi(c, "vortensity", ref="sigma", fix_avg=True)
+        #         popt = self.fit_gaussian_r(c, "vortensity", ref="sigma", fixed={"y0" : popt[0], "a" : popt[1]})
 
-        for name, vals in zip(names, arrays):
-            vals_r = vals[:, inds[1]]
-            vals_phi = vals[inds[0], :]
+        #         popt = self.fit_gaussian_phi(c, "sigma", ref="vortensity", fixed={"y0" : 0})
+        #         popt = self.fit_gaussian_r(c, "sigma", ref="vortensity", fixed={"y0" : popt[0], "a" : popt[1]})
+        #     except RuntimeError:
+        #         break
 
-            x = r[mask_r]
-            y = vals_r[mask_r]
+        # popt = self.fit_gaussian_phi(c, "vorticity", ref="vortensity", fix_avg=True)
+        # popt = self.fit_gaussian_r(c, "vorticity", ref="vortensity", fixed={"y0" : popt[0], "a" : popt[1]})
 
-            fixed = {}
-            blow = {}
+    def fit_gaussian_phi(self, c, key, ref="contour", fixed=dict(), blow=dict(), bup=dict(), fix_avg=False):
+        """ Fit a gaussian in phi direction.
 
-            if name == "sigma":
-                blow["y0"] = 0
-            else:
-                fixed["y0"] = 1
-
-            fitter = GaussFitter(x, y, autoweight=True, fixed=fixed, blow=blow)
-            popt, pcov = fitter.fit()
-
-            c[name + "_fit_r_y0"] = popt[0]
-            c[name + "_fit_r_a"] = popt[1]
-            c[name + "_fit_r_x0"] = popt[2]
-            c[name + "_fit_r_sigma"] = popt[3]
-
-            x, y = combine_periodic(phi, vals_phi, mask_phi)
-            fitter = GaussFitter(x, y, autoweight=True, fixed=fixed, blow=blow)
-            popt, pcov = fitter.fit()
-
-            c[name + "_fit_phi_y0"] = popt[0]
-            c[name + "_fit_phi_a"] = popt[1]
-            c[name + "_fit_phi_x0"] = popt[2]
-            c[name + "_fit_phi_sigma"] = popt[3]
-
-    def fit_vortensity(self, c):
-        """ Fit a gaussian to vortensity slices in radial and azimuthal direction.
+        Fit a region in r direction either specified by the mask
+        generated from the contour or from a previous fit.
+        This is controlled with the ref parameter which can be:
+        contour, vortensity, sigma
 
         Parameters
         ----------
         c : dict
             Vortex candidate.
+        key : str
+            Name of the variable for fitting.
+        ref : str
+            Name of the variable to take the mask from.
         """
-        vals_r = vals[:, inds[1]]
+        inds, mask_r, mask_phi = self.select_fit_region(c, ref)
+        vals = self.select_fit_quantity(key)
+
         vals_phi = vals[inds[0], :]
 
-        x = r[mask_r]
-        y = vals_r[mask_r]
+        phi = self.Yc_view[inds[0], :]
 
-        fixed = {}
-        blow = {}
+        # x = phi[mask_phi]
+        # y = vals_phi[mask_phi]
+        x, y = combine_periodic(phi, vals_phi, mask_phi,
+                                bnd=self.azimuthal_boundaries)
 
-        if name == "sigma":
-            blow["y0"] = 0
-        else:
-            fixed["y0"] = 1
+        if fix_avg:
+            fixed["y0"] = np.average(vals_phi)
 
-        fitter = GaussFitter(x, y, autoweight=True, fixed=fixed, blow=blow)
+        # if "sigma" not in bup:
+        #     bup["sigma"] = 2*(np.max(x) - np.min(x))
+
+        fitter = GaussFitter(x, y, autoweight=True,
+                             fixed=fixed, blow=blow, bup=bup)
         popt, pcov = fitter.fit()
 
-        c[name + "_fit_r_y0"] = popt[0]
-        c[name + "_fit_r_a"] = popt[1]
-        c[name + "_fit_r_x0"] = popt[2]
-        c[name + "_fit_r_sigma"] = popt[3]
+        x0 = self.clamp_periodic(popt[2])
+        ind = position_index(phi, x0)
+        c[key + "_fit_phi_y0"] = popt[0]
+        c[key + "_fit_phi_a"] = popt[1]
+        c[key + "_fit_phi_x0"] = x0
+        c[key + "_fit_phi_sigma"] = popt[3]
+        c[key + "_fit_phi_ind"] = ind
 
-        x, y = combine_periodic(phi, vals_phi, mask_phi)
-        fitter = GaussFitter(x, y, autoweight=True, fixed=fixed, blow=blow)
-        popt, pcov = fitter.fit()
+        return popt
 
-        c[name + "_fit_phi_y0"] = popt[0]
-        c[name + "_fit_phi_a"] = popt[1]
-        c[name + "_fit_phi_x0"] = popt[2]
-        c[name + "_fit_phi_sigma"] = popt[3]
+    def clamp_periodic(self, x):
+        """ Make sure a periodic quantity is inside the domain.
 
-    def fit_gaussian_r(self, c, key, ref="contour"):
+        Parameters
+        ----------
+        x : float
+            Position.
+
+        Returns
+        -------
+        float
+            Position moved into the boundary values.
+        """
+        bnd = self.azimuthal_boundaries
+        rv = (x - bnd[0]) % (bnd[1]-bnd[0]) + bnd[0]
+        return rv
+
+    def fit_gaussian_r(self, c, key, ref="contour", fixed=dict(), blow=dict(), bup=dict()):
         """ Fit a gaussian in r direction.
 
         Fit a region in r direction either specified by the mask
@@ -471,45 +482,273 @@ class Vortector:
         ref : str
             Name of the variable to take the mask from.
         """
-        inds, mask_r, mask_phi = select_fit_region(c, ref)
+        inds, mask_r, mask_phi = self.select_fit_region(c, ref)
+        vals = self.select_fit_quantity(key)
 
         vals_r = vals[:, inds[1]]
         vals_phi = vals[inds[0], :]
 
+        r = self.Xc_view[:, inds[1]]
+        phi = self.Yc_view[inds[0], :]
+
         x = r[mask_r]
         y = vals_r[mask_r]
 
-        fixed = {}
-        blow = {}
-
-        if name == "sigma":
-            blow["y0"] = 0
-        else:
-            fixed["y0"] = 1
-
-        fitter = GaussFitter(x, y, autoweight=True, fixed=fixed, blow=blow)
+        fitter = GaussFitter(x, y, autoweight=True,
+                             fixed=fixed, blow=blow, bup=bup)
         popt, pcov = fitter.fit()
 
-        c[name + "_fit_r_y0"] = popt[0]
-        c[name + "_fit_r_a"] = popt[1]
-        c[name + "_fit_r_x0"] = popt[2]
-        c[name + "_fit_r_sigma"] = popt[3]
+        x0 = popt[2]
+        ind = position_index(r, x0)
+        c[key + "_fit_r_y0"] = popt[0]
+        c[key + "_fit_r_a"] = popt[1]
+        c[key + "_fit_r_x0"] = x0
+        c[key + "_fit_r_sigma"] = popt[3]
+        c[key + "_fit_r_ind"] = ind
+
+        return popt
+
+    def select_fit_quantity(self, key):
+        """ Return values by name.
+
+        Parameters
+        ----------
+        key : str
+            Name of the quantity.
+
+        Returns
+        -------
+        array of floats
+            Data array.
+        """
+        if key == "vortensity":
+            return self.vortensity_view
+        elif key == "sigma":
+            return self.Rho_view
+        elif key == "vorticity":
+            return self.vortensity_view
+        else:
+            raise AttributeError(
+                f"'{key}' is not a valid choice for a fit quantity.")
+
+    def vortex_mask_r(self, c, hw):
+        """ Construct a radial vortex mask from center and width value.
+
+        Parameters
+        ----------
+        c : float
+            Center position.
+        hw : float
+            Half of the width.
+
+        Returns
+        -------
+        array of bool
+            Mask indicating the vortex region.
+        """
+        r = self.Xc_view[:, 0]
+        mask = np.zeros(len(r), dtype=bool)
+        cind = np.argmin(np.abs(r - c))
+        lr = c - hw
+        lind = np.argmin(np.abs(r - lr))
+        ur = c + hw
+        uind = np.argmin(np.abs(r - ur))
+        mask = np.zeros(len(r), dtype=bool)
+        mask[lind:uind+1] = True
+        return mask
+
+    def show_radial_fit(self, ax, key, n, ref="contour"):
+        """ Show a plot of a radial gaussian fit for the nth vortex.
+
+        Parameters
+        ----------
+        ax : plt.axes
+            Axes to plot on.
+        key : str
+            Name of the variable.
+        n : int
+            Number of the vortex in the sorted vortex array.
+        ref : str
+            Reference for the vortex region (contour/vortensity/sigma).
+        """
+        c = [c for c in self.vortices][n]
+        inds, mask_r, mask_phi = self.select_fit_region(c, ref)
+        vals = self.select_fit_quantity(key)
+
+        mask = mask_r
+
+        y = vals[:, inds[1]]
+        x = self.Xc_view[:, 0]
+
+        ax.plot(x, y, label="data slice")
+
+        y0 = c[key + "_fit_r_y0"]
+        x0 = c[key + "_fit_r_x0"]
+        a = c[key + "_fit_r_a"]
+        sig = c[key + "_fit_r_sigma"]
+        popt = [y0, a, x0, sig]
+
+        ax.plot(x[mask], y[mask], label="vortex region")
+        ax.plot(x[mask], gauss(x[mask], *popt),
+                ls="--", color="C2", lw=2, label="fit")
+        ax.plot(x, gauss(x, *popt), color="C3", alpha=0.3)
+
+        # ax.plot([x0],[y[inds[0]]], "x")
+        ax.set_xlabel(r"$r$")
+        ax.set_ylabel(f"{key}")
+        ax.legend()
+        ax.grid()
+
+    def show_azimuthal_fit(self, ax, key, n, ref="contour"):
+        """ Show a plot of a azimuthal gaussian fit for the nth vortex.
+
+        Parameters
+        ----------
+        ax : plt.axes
+            Axes to plot on.
+        key : str
+            Name of the variable.
+        n : int
+            Number of the vortex in the sorted vortex array.
+        ref : str
+            Reference for the vortex region (contour/vortensity/sigma).
+        """
+        c = [c for c in self.vortices][n]
+        inds, mask_r, mask_phi = self.select_fit_region(c, ref)
+        vals = self.select_fit_quantity(key)
+
+        mask = mask_phi
+
+        y = vals[inds[0], :]
+        x = self.Yc_view[0, :]
+
+        ax.plot(x, y, label="data slice")
+
+        y0 = c[key + "_fit_phi_y0"]
+        x0 = c[key + "_fit_phi_x0"]
+        a = c[key + "_fit_phi_a"]
+        sig = c[key + "_fit_phi_sigma"]
+        popt = [y0, a, x0, sig]
+
+        ax.plot(x[mask], y[mask], label="vortex region")
+
+        xc, yc = combine_periodic(x, y, mask)
+        bnd = self.azimuthal_boundaries
+        plot_periodic(ax, xc, gauss(xc, *popt), bnd=bnd,
+                      ls="--", lw=2, color="C2", label="fit")
+        L = bnd[1] - bnd[0]
+        xfull = np.linspace(x0-L/2, x0+L/2, endpoint=False)
+        plot_periodic(ax, xfull, gauss(xfull, *popt), bnd=bnd,
+                      ls="-", lw=1, color="C3", alpha=0.3)
+        # ax.plot([x0],[[inds[1]]], "x")
+        ax.set_xlabel(r"$\phi$")
+        ax.set_ylabel(f"{key}")
+        ax.legend()
+        ax.grid()
+
+    def vortex_mask_phi(self, c, hw):
+        """ Construct a azimuthal vortex mask from center and width value.
+
+        This function takes the periodic boundary into account.
+
+        Parameters
+        ----------
+        c : float
+            Center position.
+        hw : float
+            Half of the width.
+
+        Returns
+        -------
+        array of bool
+            Mask indicating the vortex region.
+        """
+        phi = self.Yc_view[0, :]
+        mask = np.zeros(len(phi), dtype=bool)
+        cind = np.argmin(np.abs(phi - c))
+        lphi = self.clamp_periodic(c - hw)
+        lind = np.argmin(np.abs(phi - lphi))
+        uphi = self.clamp_periodic(c + hw)
+        uind = np.argmin(np.abs(phi - uphi))
+        mask = np.zeros(len(phi), dtype=bool)
+        bnd = self.azimuthal_boundaries
+        if c + hw > bnd[1] or c - hw < bnd[0]:
+            mask[lind:] = True
+            mask[:uind+1] = True
+        else:
+            mask[lind:uind+1] = True
+        return mask
+
+    def select_fit_region(self, c, ref):
+        """ Select the indices and masks which indicate the fit region.
+
+        The source which specifies the vortex region is either
+        the extracted contour or the fits of vortensity or surface density.
+        ref = contour, vortensity, sigma
+
+
+        Parameters
+        ----------
+        c : dict
+            Vortex candidate.
+        ref : str
+            Name of the variable to take the mask from.
+
+        Returns
+        -------
+        inds : tuple of two int
+            Radial and azimuthal index of center.
+        mask_r : array of bool
+            Mask indicating vortex region in radial direction.
+        mask_phi : array of bool
+            Mask indicating vortex region in azimuthal direction.
+        """
+        if ref == "contour":
+            r0, phi0 = c["vortensity_min_pos"]
+            rind = position_index(self.Xc_view[:, 0], r0)
+            phiind = position_index(self.Yc_view[0, :], phi0)
+            inds = (rind, phiind)
+            mask = c["mask_view"]
+            mask_r = mask[:, inds[1]]
+            mask_phi = mask[inds[0], :]
+        elif ref == "vortensity":
+            inds = (c["vortensity_fit_r_ind"],
+                    c["vortensity_fit_phi_ind"])
+            center = c["vortensity_fit_r_x0"]
+            hw = c["vortensity_fit_r_sigma"]
+            mask_r = self.vortex_mask_r(center, hw)
+            center = c["vortensity_fit_phi_x0"]
+            hw = c = c["vortensity_fit_phi_sigma"]
+            mask_phi = self.vortex_mask_phi(center, hw)
+        elif ref == "sigma":
+            inds = (c["sigma_fit_r_ind"],
+                    c["sigma_fit_phi_ind"])
+            center = c["sigma_fit_r_x0"]
+            hw = c["sigma_fit_r_sigma"]
+            mask_r = self.vortex_mask_r(center, hw)
+            center = c["sigma_fit_phi_x0"]
+            hw = c["sigma_fit_phi_sigma"]
+            mask_phi = self.vortex_mask_phi(center, hw)
+        else:
+            raise AttributeError(
+                f"'{ref}' is not a valid reference for fitting.")
+        return inds, mask_r, mask_phi
 
     def calc_vortex_mass(self, c):
-        mask = c["mask"]
+        mask = c["mask_view"]
         c["mass"] = np.sum(self.mass_view[mask])
         c["mass_background"] = np.sum(self.mass_background_view[mask])
         c["mass_enhancement"] = c["mass"] - c["mass_background"]
 
     def calc_vortensity(self, c):
-        mask = c["mask"]
+        mask = c["mask_view"]
         c["vortensity_mean"] = np.mean(self.vortensity_view[mask])
         c["vortensity_median"] = np.median(self.vortensity_view[mask])
         c["vortensity_min"] = np.min(self.vortensity_view[mask])
         c["vortensity_max"] = np.max(self.vortensity_view[mask])
 
     def calc_sigma(self, c):
-        mask = c["mask"]
+        mask = c["mask_view"]
         c["sigma_mean"] = np.mean(self.Rho_view[mask])
         c["sigma_median"] = np.median(self.Rho_view[mask])
         c["sigma_min"] = np.min(self.Rho_view[mask])
@@ -520,7 +759,7 @@ class Vortector:
         c["sigma0_max"] = np.max(self.Rho_background_view[mask])
 
     def calc_vortex_extent(self, c):
-        mask = c["mask"]
+        mask = c["mask_view"]
         c["area"] = np.sum(self.cell_area_view[mask])
         c["rmax"] = self.Xc_view[c["left_view"]]
         c["rmin"] = self.Xc_view[c["right_view"]]
@@ -532,7 +771,7 @@ class Vortector:
             c["height"] = c["phimax"] - c["phimin"]
 
     def calc_vortensity_flux(self, c):
-        mask = c["mask"]
+        mask = c["mask_view"]
         A = self.cell_area_view
         c["vortensity_flux"] = np.sum((A*self.vortensity_view)[mask])
         c["vortensity_exp_flux"] = np.sum(
@@ -540,7 +779,7 @@ class Vortector:
 
     def find_vortensity_min_position(self, contour):
         # Calculate the position of minimum vortensity
-        mask = np.logical_not(contour["mask"])
+        mask = np.logical_not(contour["mask_view"])
         ind = np.argmin(np.ma.masked_array(
             self.vortensity_view, mask=mask), axis=None)
         inds = np.unravel_index(ind, mask.shape)
@@ -553,7 +792,7 @@ class Vortector:
 
     def find_density_max_position(self, contour):
         # Calculate the position of maximum density
-        mask = np.logical_not(contour["mask"])
+        mask = np.logical_not(contour["mask_view"])
         ind = np.argmax(np.ma.masked_array(
             self.Rho_view, mask=mask), axis=None)
         inds = np.unravel_index(ind, mask.shape)
@@ -593,7 +832,7 @@ class Vortector:
 
         This mask fits the initial dimensions of the data arrays.
         """
-        mask = v["mask"]
+        mask = v["mask_view"]
         gmask = np.concatenate(
             [np.zeros((self.vmi, mask.shape[1]), dtype=bool),
              mask,
@@ -647,6 +886,8 @@ class Vortector:
 
         self.remove_intermediate_data(include_mask, keep_internals)
 
+        # self.vortices = [c.copy() for c in self.candidates.values()]
+
         # Return vortices
         return self.vortices
 
@@ -666,7 +907,7 @@ class Vortector:
             if include_mask:
                 c["mask"] = self.construct_global_mask(c)
             else:
-                del c["mask"]
+                del c["mask_view"]
             self.vortices.append(c)
 
 
@@ -689,50 +930,25 @@ def map_ext_pnt_to_orig(pnt, Nq):
     return (x, y)
 
 
-def select_fit_region(c, ref):
-    """ Select the indices and masks which indicate the fit region.
-
-    The source which specifies the vortex region is either
-    the extracted contour or the fits of vortensity or surface density.
-    ref = contour, vortensity, sigma
-
+def position_index(x, x0):
+    """ Index of position x0 in array x .
 
     Parameters
     ----------
-    c : dict
-        Vortex candidate.
-    ref : str
-        Name of the variable to take the mask from.
+    x : array
+        Position array.
+    x0 : float
+        Position of interest.
 
     Returns
     -------
-    inds : tuple of two int
-        Radial and azimuthal index of center.
-    mask_r : array of bool
-        Mask indicating vortex region in radial direction.
-    mask_phi : array of bool
-        Mask indicating vortex region in azimuthal direction.
+    int
+        Index of position x0.
     """
-    if ref == "contour":
-        inds = c["vortensity_min_inds"]
-        mask = c["mask"]
-        mask_r = mask[:, inds[1]]
-        mask_phi = mask[inds[0], :]
-    elif ref == "vortensity":
-        inds = (c["fit_vortensity_center_r_ind"],
-                c["fit_vortensity_center_phi_ind"])
-        mask_r = c["fit_vortensity_mask_r"]
-        mask_phi = c["fit_vortensity_mask_phi"]
-    elif ref == "sigma":
-        inds = (c["fit_sigma_center_r_ind"], c["fit_sigma_center_phi_ind"])
-        mask_r = c["fit_sigma_mask_r"]
-        mask_phi = c["fit_sigma_mask_phi"]
-    else:
-        raise AttributeError(f"'{ref}' is not a valid reference for fitting.")
-    return inds, mask_r, mask_phi
+    return int(np.argmin(np.abs(x-x0)))
 
 
-def combine_periodic(x, y, m, lb=-np.pi, rb=np.pi):
+def combine_periodic(x, y, m, bnd=(-np.pi, np.pi)):
     """ Combine an array split at a periodic boundary. 
 
     This is used for vortices that stretch over the periodic boundary
@@ -754,10 +970,8 @@ def combine_periodic(x, y, m, lb=-np.pi, rb=np.pi):
         Values (full domain).
     m: array (boolean)
         Mask to select the active values.
-    lb: float
-        Position of the left boundary.
-    rb: float
-        Position of the right boundary.
+    bnd: tuple of two float
+        Position of the left and right boundary.
 
     Returns
     -------
@@ -766,13 +980,14 @@ def combine_periodic(x, y, m, lb=-np.pi, rb=np.pi):
     y : array
         values
     """
+    lb, rb = bnd
     if m[0] and m[-1] and not all(m):
-        bnd = np.where(m == False)[0][0]
-        xl = x[:bnd]
-        yl = y[:bnd]
-        bnd = np.where(m == False)[0][-1]
-        xr = x[bnd:]
-        yr = y[bnd:]
+        b = np.where(m == False)[0][0]
+        xl = x[:b]
+        yl = y[:b]
+        b = np.where(m == False)[0][-1]
+        xr = x[b:]
+        yr = y[b:]
         xcom = np.append(xr, xl+(rb-lb))
         ycom = np.append(yr, yl)
         return xcom, ycom
@@ -958,3 +1173,44 @@ class GaussFitter:
                 f, x, y, p0=p0, bounds=bounds, sigma=weights)
 
         return popt, pcov
+
+
+def plot_periodic_mask(ax, x, y, m, **kwargs):
+    #     print(m)
+    if m[0] and m[-1] and not all(m):
+        bnd = np.where(m == False)[0][0]
+        xl = x[:bnd]
+        yl = y[:bnd]
+        line, = ax.plot(xl, yl, **kwargs)
+        bnd = np.where(m == False)[0][-1]
+#         print(len(x))
+#         print(bnd)
+        xr = x[bnd:]
+        yr = y[bnd:]
+        kwa = kwargs.copy()
+        kwa["color"] = line.get_color()
+        kwa["ls"] = line.get_linestyle()
+        line, = ax.plot(xr, yr, **kwa)
+        line.set_label(None)
+    else:
+        ax.plot(x[m], y[m], **kwargs)
+
+
+def plot_periodic(ax, x, y, m=None, bnd=(-np.pi, np.pi), **kwargs):
+    if m is not None:
+        plot_periodic_mask(ax, x, y, m, **kwargs)
+        return
+    L = bnd[1] - bnd[0]
+    m = np.logical_and(x <= bnd[1], x >= bnd[0])
+    line, = ax.plot(x[m], y[m], **kwargs)
+    kwa = kwargs.copy()
+    kwa["color"] = line.get_color()
+    kwa["ls"] = line.get_linestyle()
+
+    m = x < bnd[0]
+    line, = ax.plot(x[m] + L, y[m], **kwa)
+    line.set_label(None)
+
+    m = x > bnd[1]
+    line, = ax.plot(x[m] - L, y[m], **kwa)
+    line.set_label(None)
