@@ -375,10 +375,12 @@ class Vortector:
 
     def fit_gaussians(self, c):
         try:
-            popt = self.fit_gaussian_phi(
+            fit_vort_phi = self.fit_gaussian_phi(
                 c, "vortensity", ref="contour", fix_avg=True)
-            popt = self.fit_gaussian_r(c, "vortensity", ref="contour", fixed={
-                "y0": popt[0], "a": popt[1]})
+            save_fit(c, "vortensity", "phi", fit_vort_phi)
+            fit_vort_r = self.fit_gaussian_r(c, "vortensity", ref="contour", fixed={
+                "y0": fit_vort_phi["popt"][0], "a": fit_vort_phi["popt"][1]})
+            save_fit(c, "vortensity", "r", fit_vort_r)
 
             ref = "vortensity"
             center = "vortensity"
@@ -399,56 +401,69 @@ class Vortector:
 
         dy = ymax - yavg_outer
 
-        popt = self.fit_gaussian_phi(
+        fit_phi = self.fit_gaussian_phi(
             c, "sigma", autoweight=True,
             ref=ref, center=center,
             blow={"y0": 0.75*yavg_outer, "a": 0},
             bup={"y0": 1.25*yavg_outer},
             p0={"y0": yavg_outer, "a": dy}
         )
+        save_fit(c, "sigma", "phi", fit_phi)
 
-        popt = self.fit_gaussian_r(
+        y0_phi = fit_phi["popt"][0]
+        a_phi = fit_phi["popt"][1]
+        fit_r = self.fit_gaussian_r(
             c, "sigma", autoweight=True,
             ref=ref, center=center,
             blow={"y0": 0.75*yavg_outer, "a": 0},
             bup={"y0": 1.25*yavg_outer},
-            p0={"y0": popt[0], "a": popt[1]},
-            fixed={"y0": popt[0]}
+            p0={"y0": y0_phi, "a": a_phi},
+            fixed={"y0": y0_phi}
         )
+        save_fit(c, "sigma", "r", fit_r)
 
-        for n in range(2):
-            popt = self.fit_gaussian_phi(
+        for n in range(5):
+            popt = fit_phi["popt"]
+            lf = 0.9
+            uf = 1.1
+            fit_phi_new = self.fit_gaussian_phi(
+                c, "sigma", autoweight=True,
+                ref="vortensity", center="sigma",
+                blow={"y0": lf*popt[0], "a": lf*popt[1], "sigma": lf*popt[3]},
+                bup={"y0": uf*popt[0], "a": uf*popt[1], "sigma": uf*popt[3]},
+                p0={"y0": yavg_outer, "a": popt[1],
+                    "x0": popt[2], "sigma": popt[3]},
+                # fixed={"y0" : popt[0]}
+                # fixed = {"y0": popt[0], "a": popt[1],"sigma" : popt[3]},
+            )
+            if fit_phi_new["diff"] < fit_phi["diff"]:
+                print(f"accepted {n+2} fit in phi")
+                fit_phi = fit_phi_new
+                save_fit(c, "sigma", "phi", fit_phi)
+                fit_phi_stopped = False
+            else:
+                fit_phi_stopped = True
+
+            y0_phi = fit_phi["popt"][0]
+            a_phi = fit_phi["popt"][1]
+            fit_r_new = self.fit_gaussian_r(
                 c, "sigma", autoweight=True,
                 ref="sigma", center="sigma",
                 blow={"y0": 0.75*yavg_outer, "a": 0},
                 bup={"y0": 1.25*yavg_outer},
-                p0={"y0": yavg_outer, "a": dy}
-            )
+                p0={"y0": y0_phi, "a": a_phi},
+                fixed={"y0": y0_phi, "a": a_phi})
 
-            popt = self.fit_gaussian_r(
-                c, "sigma", autoweight=True,
-                ref="sigma", center="sigma",
-                blow={"y0": 0.75*yavg_outer, "a": 0},
-                bup={"y0": 1.25*yavg_outer},
-                p0={"y0": popt[0], "a": popt[1]},
-                fixed={"y0": popt[0]}
-            )
-
-        popt = self.fit_gaussian_phi(
-            c, "sigma", autoweight=True,
-            ref="sigma", center="sigma",
-            blow={"y0": 0.75*yavg_outer, "a": 0},
-            bup={"y0": 1.25*yavg_outer},
-            p0={"y0": yavg_outer, "a": dy}
-        )
-
-        popt = self.fit_gaussian_r(
-            c, "sigma", autoweight=True,
-            ref="sigma", center="sigma",
-            blow={"y0": 0.75*yavg_outer, "a": 0},
-            bup={"y0": 1.25*yavg_outer},
-            p0={"y0": popt[0], "a": popt[1]},
-            fixed={"y0": popt[0], "a": popt[1]})
+            if fit_r_new["diff"] < fit_r["diff"]:
+                print(f"accepted {n+2} fit in r")
+                fit_r = fit_r_new
+                save_fit(c, "sigma", "r", fit_r)
+                fit_r_stopped = False
+            else:
+                fit_r_stopped = True
+            
+            if fit_r_stopped and fit_phi_stopped:
+                break
 
     def fit_gaussian_phi(self, c, key, ref="contour", center=None, fixed=None, blow=None, bup=None, p0=None, fix_avg=False, autoweight=True):
         """ Fit a gaussian in phi direction.
@@ -475,6 +490,8 @@ class Vortector:
         if center is None:
             center = ref
         inds = self.select_center_inds(c, center)
+        print(
+            f"inds inside phi fit for {key} with ref {ref} and center {center}", inds)
         mask_r, mask_phi = self.select_fit_region(c, ref)
         vals = self.select_fit_quantity(key)
 
@@ -489,7 +506,7 @@ class Vortector:
             fixed["y0"] = np.average(vals_phi)
 
         if "sigma" not in bup:
-            bup["sigma"] = 5*(np.max(x) - np.min(x))
+            bup["sigma"] = (np.max(x) - np.min(x))
 
         if "sigma" not in blow:
             blow["sigma"] = (np.max(x) - np.min(x))/10
@@ -500,18 +517,23 @@ class Vortector:
                              name=f"{key} azimuthal n={c['n']}")
         popt, pcov = fitter.fit()
 
-        diff = np.average(np.abs(y - gauss(x, *popt))) / np.abs(popt[1])
+        diff = np.sum(np.abs(y - gauss(x, *popt)))
+        reldiff = diff / np.sum(y - np.min(y))
 
-        x0 = self.clamp_periodic(popt[2])
-        ind = position_index(phi, x0)
-        c[key + "_fit_phi_y0"] = popt[0]
-        c[key + "_fit_phi_a"] = popt[1]
-        c[key + "_fit_phi_x0"] = x0
-        c[key + "_fit_phi_sigma"] = popt[3]
-        c[key + "_fit_phi_ind"] = ind
-        c[key + "_fit_phi_reldiff"] = diff
+        fig, ax = plt.subplots()
+        ax.plot(x, y)
+        ax.plot(x, gauss(x, *popt), "--")
+        ax.set_title(
+            fitter.name + f" reldiff={reldiff:.2e}, diff={diff:.2e}, r = {self.Xc_view[inds]:.2e} phi = {self.Yc_view[inds]:.2e}")
 
-        return popt
+        fit = {
+            "popt": popt,
+            "inds": inds,
+            "reldiff": reldiff,
+            "diff": diff
+        }
+
+        return fit
 
     def fit_gaussian_r(self, c, key, ref="contour", center=None, fixed=None, blow=None, bup=None, p0=None, autoweight=True):
         """ Fit a gaussian in r direction.
@@ -550,7 +572,7 @@ class Vortector:
         y = vals_r[mask_r]
 
         if "sigma" not in bup:
-            bup["sigma"] = 5*(np.max(x) - np.min(x))
+            bup["sigma"] = (np.max(x) - np.min(x))
 
         if "sigma" not in blow:
             blow["sigma"] = (np.max(x) - np.min(x))/10
@@ -561,18 +583,25 @@ class Vortector:
                              name=f"{key} radial n={c['n']}")
         popt, pcov = fitter.fit()
 
-        diff = np.average(np.abs(y - gauss(x, *popt))) / np.abs(popt[1])
+        diff = np.average(np.abs(y - gauss(x, *popt)))
+        reldiff = diff / (np.max(y) - np.min(y))
 
-        x0 = popt[2]
-        ind = position_index(r, x0)
-        c[key + "_fit_r_y0"] = popt[0]
-        c[key + "_fit_r_a"] = popt[1]
-        c[key + "_fit_r_x0"] = x0
-        c[key + "_fit_r_sigma"] = popt[3]
-        c[key + "_fit_r_ind"] = ind
-        c[key + "_fit_r_reldiff"] = diff
+        fit = {
+            "popt": popt,
+            "inds": inds,
+            "reldiff": reldiff,
+            "diff": diff
+        }
+        
+        
+        fig, ax = plt.subplots()
+        ax.plot(x, y)
+        ax.plot(x, gauss(x, *popt), "--")
+        ax.set_title(
+            fitter.name + f" reldiff={reldiff:.2e}, diff={diff:.2e}, r = {self.Xc_view[inds]:.2e} phi = {self.Yc_view[inds]:.2e}")
 
-        return popt
+
+        return fit
 
     def clamp_periodic(self, x):
         """ Make sure a periodic quantity is inside the domain.
@@ -629,12 +658,13 @@ class Vortector:
         array of bool
             Mask indicating the vortex region.
         """
+        wf = 1.5
         r = self.Xc_view[:, 0]
         mask = np.zeros(len(r), dtype=bool)
         cind = np.argmin(np.abs(r - c))
-        lr = c - hw
+        lr = c - wf*hw
         lind = np.argmin(np.abs(r - lr))
-        ur = c + hw
+        ur = c + wf*hw
         uind = np.argmin(np.abs(r - ur))
         mask = np.zeros(len(r), dtype=bool)
         mask[lind:uind+1] = True
@@ -657,6 +687,7 @@ class Vortector:
         c = [c for c in self.vortices][n]
         center = ref if center is None else center
         inds = self.select_center_inds(c, center)
+        inds = c[f"{key}_fit_r_inds"]
         mask_r, mask_phi = self.select_fit_region(c, ref)
         vals = self.select_fit_quantity(key)
 
@@ -665,7 +696,7 @@ class Vortector:
         y = vals[:, inds[1]]
         x = self.Xc_view[:, 0]
 
-        ax.plot(x, y, label="data slice")
+        ax.plot(x, y, label=f"data slice n={c['n']}")
         ax.plot(x[mask], y[mask], label="vortex region")
 
         try:
@@ -674,9 +705,10 @@ class Vortector:
             a = c[key + "_fit_r_a"]
             sig = c[key + "_fit_r_sigma"]
             popt = [y0, a, x0, sig]
+            reldiff = c[key+"_fit_r_reldiff"]
 
             ax.plot(x[mask], gauss(x[mask], *popt),
-                    ls="--", color="C2", lw=2, label="fit")
+                    ls="--", color="C2", lw=2, label=f"fit, reldiff={reldiff:.2e}")
             ax.plot(x, gauss(x, *popt), color="C3", alpha=0.3)
             ax.plot([x0], [y[inds[0]]], "x")
         except KeyError:
@@ -704,15 +736,15 @@ class Vortector:
         c = [c for c in self.vortices][n]
         center = ref if center is None else center
         inds = self.select_center_inds(c, center)
+        inds = c[f"{key}_fit_phi_inds"]
         mask_r, mask_phi = self.select_fit_region(c, ref)
         vals = self.select_fit_quantity(key)
-
         mask = mask_phi
 
         y = vals[inds[0], :]
         x = self.Yc_view[0, :]
 
-        ax.plot(x, y, label="data slice")
+        ax.plot(x, y, label=f"data slice n={c['n']}")
         plot_periodic(ax, x, y, mask, label="vortex region")
 
         try:
@@ -721,6 +753,7 @@ class Vortector:
             # x0 = self.clamp_periodic(x0)
             a = c[key + "_fit_phi_a"]
             sig = c[key + "_fit_phi_sigma"]
+            reldiff = c[key + "_fit_phi_reldiff"]
 
             bnd = self.azimuthal_boundaries
             L = bnd[1] - bnd[0]
@@ -734,7 +767,7 @@ class Vortector:
             popt = [y0, a, x0, sig]
 
             plot_periodic(ax, xc, gauss(xc, *popt), bnd=bnd,
-                          ls="--", lw=2, color="C2", label="fit")
+                          ls="--", lw=2, color="C2", label=f"fit reldiff={reldiff:.2e} r={self.Xc_view[inds[0],0]:.2e}")
 
             xfull = np.linspace(x0-L/2, x0+L/2, endpoint=True)
             plot_periodic(ax, xfull, gauss(xfull, *popt), bnd=bnd,
@@ -767,16 +800,17 @@ class Vortector:
         array of bool
             Mask indicating the vortex region.
         """
+        wf = 1.5
         phi = self.Yc_view[0, :]
         mask = np.zeros(len(phi), dtype=bool)
         cind = np.argmin(np.abs(phi - c))
-        lphi = self.clamp_periodic(c - hw)
+        lphi = self.clamp_periodic(c - wf*hw)
         lind = np.argmin(np.abs(phi - lphi))
-        uphi = self.clamp_periodic(c + hw)
+        uphi = self.clamp_periodic(c + wf*hw)
         uind = np.argmin(np.abs(phi - uphi))
         mask = np.zeros(len(phi), dtype=bool)
         bnd = self.azimuthal_boundaries
-        if c + hw > bnd[1] or c - hw < bnd[0]:
+        if c + wf*hw > bnd[1] or c - wf*hw < bnd[0]:
             mask[lind:] = True
             mask[:uind+1] = True
         else:
@@ -805,18 +839,18 @@ class Vortector:
         """
         if ref == "contour":
             r0, phi0 = c["vortensity_min_pos"]
-            rind = position_index(self.Xc_view[:, 0], r0)
-            phiind = position_index(self.Yc_view[0, :], phi0)
-            inds = (rind, phiind)
         elif ref == "vortensity":
-            inds = (c["vortensity_fit_r_ind"],
-                    c["vortensity_fit_phi_ind"])
+            r0 = c["vortensity_fit_r_x0"]
+            phi0 = c["vortensity_fit_phi_x0"]
         elif ref == "sigma":
-            inds = (c["sigma_fit_r_ind"],
-                    c["sigma_fit_phi_ind"])
+            r0 = c["sigma_fit_r_x0"]
+            phi0 = c["sigma_fit_phi_x0"]
         else:
             raise AttributeError(
                 f"'{ref}' is not a valid reference for fitting.")
+        rind = position_index(self.Xc_view[:, 0], r0)
+        phiind = position_index(self.Yc_view[0, :], phi0)
+        inds = (rind, phiind)
         return inds
 
     def select_fit_region(self, c, ref):
@@ -843,14 +877,12 @@ class Vortector:
         mask_phi : array of bool
             Mask indicating vortex region in azimuthal direction.
         """
+        inds = self.select_center_inds(c, ref)
         if ref == "contour":
-            inds = self.select_center_inds(c, "contour")
             mask = c["mask_view"]
             mask_r = mask[:, inds[1]]
             mask_phi = mask[inds[0], :]
         elif ref == "vortensity":
-            inds = (c["vortensity_fit_r_ind"],
-                    c["vortensity_fit_phi_ind"])
             center = c["vortensity_fit_r_x0"]
             hw = c["vortensity_fit_r_sigma"]
             mask_r = self.vortex_mask_r(center, hw)
@@ -858,8 +890,6 @@ class Vortector:
             hw = c = c["vortensity_fit_phi_sigma"]
             mask_phi = self.vortex_mask_phi(center, hw)
         elif ref == "sigma":
-            inds = (c["sigma_fit_r_ind"],
-                    c["sigma_fit_phi_ind"])
             center = c["sigma_fit_r_x0"]
             hw = c["sigma_fit_r_sigma"]
             mask_r = self.vortex_mask_r(center, hw)
@@ -1262,8 +1292,8 @@ class GaussFitter:
 
         self.blow["sigma"] = 0
         dx = np.max(x) - np.min(x)
-        self.blow["x0"] = np.min(x) - 0.5*dx
-        self.bup["x0"] = np.max(x) + 0.5*dx
+        self.blow["x0"] = np.min(x)
+        self.bup["x0"] = np.max(x)
 
         if blow is not None:
             for key, val in blow.items():
@@ -1371,6 +1401,29 @@ class GaussFitter:
             print("-------------------")
 
         return popt, pcov
+
+
+def save_fit(c, varname, axis, fit, parameters=["y0", "a", "x0", "sigma"]):
+    """ Save fit variables to a vortex candidate dict.
+
+    Paramters
+    ---------
+    c : dict
+        Vortex data dict.
+    varname : str
+        Fit variable name.
+    axis : str
+        Name of the direction (e.g. r or phi).
+    fit : dict
+        Dict containing popt vector and aux info.
+    """
+    pre = f"{varname}_fit_{axis}"
+    for n, param in enumerate(parameters):
+        c[f"{pre}_{param}"] = fit["popt"][n]
+    for key, val in fit.items():
+        if key == "popt":
+            continue
+        c[f"{pre}_{key}"] = fit[key]
 
 
 def plot_periodic_mask(ax, x, y, m, **kwargs):
