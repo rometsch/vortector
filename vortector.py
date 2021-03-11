@@ -1,5 +1,6 @@
 import cv2
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 import numpy as np
 from scipy.optimize import curve_fit
 
@@ -372,8 +373,139 @@ class Vortector:
                 self.fit_gaussians(c)
             except ValueError as e:
                 print(e)
+            try:
+                self.calc_fit_difference_2D(c)
+            except KeyError as e:
+                print(e)
 
-    def fit_gaussians(self, c):
+
+
+    def fit_gaussians(self, vort):
+        inds = vort["vortensity_min_inds"]
+
+        def get_pos(inds):
+            r = self.Xc_view[inds]
+            phi = self.Yc_view[inds]
+            return (r,phi)
+
+        top = get_pos(vort["top_view"])
+        left = get_pos(vort["left_view"])
+        right = get_pos(vort["right_view"])
+        bottom = get_pos(vort["bottom_view"])
+
+
+        mask = vort["mask_view"]
+        mask_r = mask[:, inds[1]]
+        mask_phi = mask[inds[0],:]
+
+        vals = self.Rho_view
+        R = self.Xc_view[mask]
+        PHI = self.Yc_view[mask]
+
+        Z = vals[mask]
+        Z_r = vals[:, inds[1]]
+        Z_phi = vals[inds[0],:]
+
+        r0 = self.Xc_view[inds]
+        phi0 = self.Yc_view[inds]
+
+        c_ref = np.average(Z_phi[np.logical_not(mask_phi)])
+
+        c_guess = c_ref
+        a_guess = np.max(Z) - c_guess
+
+
+        if bottom[1] > top[1]:
+            if phi0 > 0:
+                mask_up = PHI < phi0-np.pi
+                mask_low = np.logical_not(mask_up)
+
+                R_up = R[mask_up]
+                PHI_up = PHI[mask_up]+2*np.pi
+                Z_up = Z[mask_up]
+
+                R_low = R[mask_low]
+                PHI_low = PHI[mask_low]
+                Z_low = Z[mask_low]
+
+                R_fit = np.append(R_low,R_up)
+                PHI_fit = np.append(PHI_low,PHI_up)
+                Z_fit = np.append(Z_low,Z_up)
+            else:
+                mask_up = PHI > phi0+np.pi
+                mask_low = np.logical_not(mask_up)
+
+                R_up = R[mask_up]
+                PHI_up = PHI[mask_up]-2*np.pi
+                Z_up = Z[mask_up]
+
+                R_low = R[mask_low]
+                PHI_low = PHI[mask_low]
+                Z_low = Z[mask_low]
+
+                R_fit = np.append(R_low,R_up)
+                PHI_fit = np.append(PHI_low,PHI_up)
+                Z_fit = np.append(Z_low,Z_up)
+        else:
+            R_fit = R
+            PHI_fit = PHI
+            Z_fit = Z
+
+        dr = np.max(R_fit) - np.min(R_fit)
+        dphi = np.max(PHI_fit) - np.min(PHI_fit)
+        fitter = Gauss2DFitter(R_fit, PHI_fit, Z_fit, 
+                            p0={"x0" : r0, "y0" : phi0, "c" : 0.8*c_ref, "a" : a_guess},
+                            blow={"c" : 0.75*c_ref, "a": 0.75*a_guess, "x0" : r0-0.25*dr, "y0" : phi0-0.25*dphi},
+                            bup={"c" : 1.25*c_ref, "a": 1.25*a_guess, "x0" : r0+0.25*dr, "y0" : phi0+0.25*dphi})
+        p, _ = fitter.fit_single()
+        
+        fit_r =   {"y0" : p[0], "a" : p[1], "x0" : p[2], "sigma" : p[4]}
+        save_fit(vort, "sigma", "r", fit_r)
+
+        fit_phi = {"y0" : p[0], "a" : p[1], "x0" : p[3], "sigma" : p[5]}
+        save_fit(vort, "sigma", "phi", fit_phi)
+
+        # print("Sigma fit parameters")
+        # for name, val, guess, low, up in zip(fitter.parameters, popt_rho, fitter.p0.values(), fitter.blow.values(), fitter.bup.values()):
+        #     print(f"{name:5s} {val: .2e} ({guess: .2e}) [{low: .2e}, {up: .2e}]")
+
+    
+        vals = self.vortensity_view
+        R = self.Xc_view[mask]
+        PHI = self.Yc_view[mask]
+        Z = vals[mask]
+        Z_r = vals[:, inds[1]]
+        Z_phi = vals[inds[0],:]
+
+        r0 = self.Xc_view[inds]
+        phi0 = self.Yc_view[inds]
+
+        if bottom[1] > top[1]:
+            Z_up = Z[mask_up]
+            Z_low = Z[mask_low]
+            Z_fit = np.append(Z_low,Z_up)
+        else:
+            Z_fit = Z
+
+        c_ref = np.average(Z_phi[np.logical_not(mask_phi)])
+
+        c_guess = c_ref
+        a_guess = np.min(Z) - c_guess
+
+        fitter = Gauss2DFitter(R_fit, PHI_fit, Z_fit, 
+                            p0={"x0" : r0, "y0" : phi0, "c" : c_ref, "a" : a_guess},
+                            blow={"c" : 0.75*c_ref, "a": 1.25*a_guess},
+                            bup={"c" : 1.25*c_ref, "a": 0.75*a_guess})
+        p, _ = fitter.fit_single()
+        
+        fit_r =   {"y0" : p[0], "a" : p[1], "x0" : p[2], "sigma" : p[4]}
+        save_fit(vort, "vortensity", "r", fit_r)
+
+        fit_phi = {"y0" : p[0], "a" : p[1], "x0" : p[3], "sigma" : p[5]}
+        save_fit(vort, "vortensity", "phi", fit_phi)
+
+
+    def fit_gaussians_direction_splitting(self, c):
         try:
             fit_vort_phi = self.fit_gaussian_phi(
                 c, "vortensity", ref="contour", fix_avg=True)
@@ -470,9 +602,7 @@ class Vortector:
                     print(
                         f"- fitting sigma to n = {c['n']}: finished after {n+2} attempt")
                 break
-        
-        self.calc_fit_difference_2D(c)
-    
+            
     def calc_fit_difference_2D(self, c, varname="sigma"):
         """ Calculate the difference of the fit to the data.
         
@@ -518,9 +648,11 @@ class Vortector:
             numvals = vals[mask]
             diff = np.sum(np.abs(fitvals - numvals))
             reldiff = diff/(area*a)
-            c[f"{pre}_{region}_diff_2D"] = diff
-            c[f"{pre}_{region}_reldiff_2D"] = reldiff
-            
+            c[f"{pre}_{region}_diff"] = diff
+            c[f"{pre}_{region}_reldiff"] = reldiff
+            c[f"{pre}_{region}_mass"] = np.sum(numvals*area)            
+            c[f"{pre}_{region}_mass_fit"] = np.sum(fitvals*area)
+
 
     def fit_gaussian_phi(self, c, key, ref="contour", center=None, fixed=None, blow=None, bup=None, p0=None, fix_avg=False, autoweight=True):
         """ Fit a gaussian in phi direction.
@@ -746,7 +878,6 @@ class Vortector:
         try:
             center = ref if center is None else center
             inds = self.select_center_inds(c, center)
-            inds = c[f"{key}_fit_r_inds"]
             mask_r, mask_phi = self.select_fit_region(c, ref)
             vals = self.select_fit_quantity(key)
 
@@ -763,10 +894,9 @@ class Vortector:
             a = c[key + "_fit_r_a"]
             sig = c[key + "_fit_r_sigma"]
             popt = [y0, a, x0, sig]
-            reldiff = c[key+"_fit_r_reldiff"]
 
             ax.plot(x[mask], gauss(x[mask], *popt),
-                    ls="--", color="C2", lw=2, label=f"fit, reldiff={reldiff:.2e}")
+                    ls="--", color="C2", lw=2, label=f"fit")
             ax.plot(x, gauss(x, *popt), color="C3", alpha=0.3)
             ax.plot([x0], [y[inds[0]]], "x")
         except KeyError as e:
@@ -801,7 +931,6 @@ class Vortector:
         try:
             center = ref if center is None else center
             inds = self.select_center_inds(c, center)
-            inds = c[f"{key}_fit_phi_inds"]
             mask_r, mask_phi = self.select_fit_region(c, ref)
             vals = self.select_fit_quantity(key)
             mask = mask_phi
@@ -816,7 +945,6 @@ class Vortector:
             # x0 = self.clamp_periodic(x0)
             a = c[key + "_fit_phi_a"]
             sig = c[key + "_fit_phi_sigma"]
-            reldiff = c[key + "_fit_phi_reldiff"]
 
             bnd = self.azimuthal_boundaries
             L = bnd[1] - bnd[0]
@@ -830,7 +958,7 @@ class Vortector:
             popt = [y0, a, x0, sig]
 
             plot_periodic(ax, xc, gauss(xc, *popt), bnd=bnd,
-                          ls="--", lw=2, color="C2", label=f"fit reldiff={reldiff:.2e} r={self.Xc_view[inds[0],0]:.2e}")
+                          ls="--", lw=2, color="C2", label=f"fit")
 
             xfull = np.linspace(x0-L/2, x0+L/2, endpoint=True)
             plot_periodic(ax, xfull, gauss(xfull, *popt), bnd=bnd,
@@ -1141,6 +1269,192 @@ class Vortector:
                 del c["mask_view"]
             self.vortices.append(c)
 
+    def show_fit_overview_1D(self, n, axes=None):
+        if axes is None:
+            fig, axes = plt.subplots(2,2, dpi=150, figsize=(8,6), constrained_layout=True, sharex="col", sharey="row")
+            axes = axes.flatten()
+        else:
+            if len(axes) != 4:
+                raise ValueError("You need to pass a 1D array with 4 pyplot axes!")
+        
+        ax = axes[1]
+        key = "vortensity"
+        ref = "contour"
+        self.show_radial_fit(ax, key, n, ref=ref)
+        ax.set_title(f"rad, ref={ref}")
+        ax.set_ylim(-1, 2)
+
+        ax = axes[0]
+        self.show_azimuthal_fit(ax, key, n, ref=ref)
+        ax.set_title(f"phi, ref={ref}")
+        ax.set_ylim(-1, 2)
+
+        ax = axes[3]
+        key = "sigma"
+        ref = "sigma"
+        center = "sigma"
+        self.show_radial_fit(ax, key, n, ref=ref, center=center)
+        ax.set_title(f"rad, ref={ref}")
+
+        ax = axes[2]
+        self.show_azimuthal_fit(ax, key, n, ref=ref, center=center)
+        ax.set_title(f"phi, ref={ref}")
+
+    def show_fit_overview_2D(self, axes=None):
+
+        from matplotlib.patches import Ellipse
+        import matplotlib.patheffects as pe
+
+        if axes is None:
+            fig, axes = plt.subplots(1,2, figsize=(12,6),dpi=150)
+        else:
+            if len(axes) != 2:
+                raise ValueError("You need to pass an array with 2 pyplot axes!")
+
+        Xc = self.Xc_view
+        Yc = self.Yc_view
+        levels = self.levels
+
+        ax = axes[0]
+        Z = self.vortensity_view
+        cmap = "magma"
+        norm = colors.Normalize(vmin=levels[0], vmax=levels[-1])
+        img_vortensity = ax.pcolormesh(Xc, Yc, Z,cmap=cmap,norm=norm, rasterized=True, shading="auto")
+
+        ax.contour(Xc, Yc, Z, levels=levels)
+
+        ax = axes[1]
+        Z = self.Rho_view
+        cmap = "magma"
+
+        vmax = self.vortices[0]["sigma_fit_r_y0"] + self.vortices[0]["sigma_fit_r_a"]
+        print("vmax", vmax)
+        # vmax = 2*np.median(Z)#self.vortices[0]["sigma_max"]
+        norm = colors.Normalize(0, vmax=vmax)
+        # norm = colors.Normalize()
+        img_sigma = ax.pcolormesh(Xc, Yc, Z,cmap=cmap,norm=norm, rasterized=True, shading="auto")
+
+        ax.contour(Xc, Yc, Z, levels=np.arange(0,vmax,vmax/10), colors="gray")
+
+        show_bounding_lines = False
+        show_bounding_points = True
+        show_fits = True
+
+        def plot_vline_periodic(ax, x, y, dy, **kwargs):
+            bup = np.pi
+            blow = -np.pi
+            L = bup - blow
+            y = (y-blow) % L + blow
+
+            at_upper_bnd = y + dy > bup
+            at_lower_bnd = y - dy < blow
+            if at_upper_bnd:
+                line, = ax.plot([x, x], [y-dy, bup], **kwargs)
+                c = line.get_color()
+                ls = line.get_linestyle()
+                lw = line.get_linewidth()
+                ax.plot([x,x], [blow, y-L+dy], ls=ls, lw=lw, c=c)
+            elif at_lower_bnd:
+                line, = ax.plot([x, x], [y+dy, blow], **kwargs)
+                c = line.get_color()
+                ls = line.get_linestyle()
+                lw = line.get_linewidth()
+                ax.plot([x,x], [bup, y+L-dy], ls=ls, lw=lw, c=c)
+            else:
+                ax.plot([x, x], [y-dy, y+dy], **kwargs)
+
+        
+        for ax, fit_color, varname, img in zip(axes, ["C1", "C2"], [r"$\varpi/\varpi_0$", r"$\Sigma$"], [img_vortensity, img_sigma]):
+            for n,vort in enumerate(self.vortices):
+                ax.contour(Xc, Yc, vort["mask_view"], levels=[0,1,2], linewidths=1, colors="white")
+                x,y = vort["vortensity_min_pos"]
+                ax.plot([x],[y],"x")
+
+                if show_bounding_lines:
+                    for key in ["rmin", "rmax"]:
+                        ax.axvline(vort[key])
+                    for key in ["phimin", "phimax"]:
+                        ax.axhline(vort[key])
+
+                if show_bounding_points:
+                    for key in ["top_view", "bottom_view", "left_view", "right_view"]:
+                        x = Xc[vort[key]]
+                        y = Yc[vort[key]]
+                        ax.plot([x], [y], "x")
+
+                blow = -np.pi
+                bup = np.pi
+                L = bup - blow
+                if show_fits:
+                    try:
+
+                        r0 = vort["vortensity_fit_r_x0"]
+                        sigma_r = vort["vortensity_fit_r_sigma"]
+                        phi0 = vort["vortensity_fit_phi_x0"]
+                        sigma_phi = vort["vortensity_fit_phi_sigma"]
+                        phi0 = (phi0 - blow)%L + blow
+                        ax.plot([r0 + sigma_r, r0 - sigma_r], [phi0, phi0], ":", color=fit_color, lw=1)
+                        plot_vline_periodic(ax, r0, phi0, sigma_phi, ls=":", color=fit_color, lw=1)
+
+                        e = Ellipse(xy=[r0, phi0], width=2*sigma_r, height=2*sigma_phi, angle=0, fc="None", lw=1, edgecolor=fit_color, ls=":")
+                        ax.add_artist(e)
+                        e.set_zorder(1000)
+                        e.set_clip_box(ax.bbox)
+                        e = Ellipse(xy=[r0, phi0+2*np.pi*(1 if phi0<0 else -1)], width=2*sigma_r, height=2*sigma_phi, angle=0, fc="None", lw=1, edgecolor=fit_color, ls=":")
+                        ax.add_artist(e)
+                        e.set_zorder(1000)
+                        e.set_clip_box(ax.bbox)
+
+                        r0 = vort["sigma_fit_r_x0"]
+                        sigma_r = vort["sigma_fit_r_sigma"]
+                        phi0 = vort["sigma_fit_phi_x0"]
+                        phi0 = (phi0 - blow)%L + blow
+                        sigma_phi = vort["sigma_fit_phi_sigma"]
+
+                        lw = 1
+                        path_effects=[pe.Stroke(linewidth=2*lw, foreground='w'), pe.Normal()]
+
+                        ax.plot([r0 + sigma_r, r0 - sigma_r], [phi0, phi0], "-", lw=lw, color=fit_color, alpha=0.5, path_effects=path_effects)
+                        plot_vline_periodic(ax, r0, phi0, sigma_phi, ls="-", color=fit_color, lw=lw, alpha=0.5, path_effects=path_effects)
+
+
+                        e = Ellipse(xy=[r0, phi0], width=2*sigma_r, height=2*sigma_phi, angle=0, fc="None", lw=lw, edgecolor=fit_color, path_effects=path_effects)
+                        ax.add_artist(e)
+                        e.set_zorder(1000)
+                        e.set_clip_box(ax.bbox)
+                        e = Ellipse(xy=[r0, phi0+2*np.pi*(1 if phi0<0 else -1)], width=2*sigma_r, height=2*sigma_phi, angle=0, fc="None", lw=lw, edgecolor=fit_color, path_effects=path_effects)
+                        ax.add_artist(e)
+                        e.set_zorder(1000)
+                        e.set_clip_box(ax.bbox)
+
+
+        #                 pre = "sigma_fit"
+        #                 y0 = vort[f"{pre}_phi_y0"]
+        #                 a = vort[f"{pre}_phi_a"]
+        #                 phi0 = vort[f"{pre}_phi_x0"]
+        #                 sigma_phi = vort[f"{pre}_phi_sigma"]
+        #                 r0 = vort[f"{pre}_r_x0"]
+        #                 sigma_r = vort[f"{pre}_r_sigma"]
+
+        #                 R = Xc
+        #                 PHI = Yc
+        #                 me = ((R-r0)/sigma_r)**2 + ((PHI-phi0)/sigma_phi)**2 <= 1
+
+        #                 ax.contour(R, PHI, me)
+                    except KeyError:
+                        pass
+
+            ax.set_xlabel(r"$r$ [au]")
+            ax.set_ylabel(r"$\phi$")
+            ax.set_yticks([-np.pi, -0.5*np.pi, 0, 0.5*np.pi, np.pi])
+            ax.set_yticklabels([r"$-\pi$", r"$-\pi/2$", "0", r"$\pi/2$", r"$\pi$"])
+
+            ax.set_xlim(5.2, 10)
+
+            ax.set_ylim(-np.pi,np.pi)
+
+            cbar = fig.colorbar(img, ax=ax)
+            cbar.set_label(varname)
 
 def fig2rgb_array(fig):
     fig.canvas.draw()
@@ -1482,8 +1796,9 @@ def save_fit(c, varname, axis, fit, parameters=["y0", "a", "x0", "sigma"]):
         Dict containing popt vector and aux info.
     """
     pre = f"{varname}_fit_{axis}"
-    for n, param in enumerate(parameters):
-        c[f"{pre}_{param}"] = fit["popt"][n]
+    if "popt" in fit:
+        for n, param in enumerate(parameters):
+            c[f"{pre}_{param}"] = fit["popt"][n]
     for key, val in fit.items():
         c[f"{pre}_{key}"] = fit[key]
 
@@ -1527,3 +1842,122 @@ def plot_periodic(ax, x, y, m=None, bnd=(-np.pi, np.pi), **kwargs):
     m = x > bnd[1]
     line, = ax.plot(x[m] - L, y[m], **kwa)
     line.set_label(None)
+
+
+def gauss2D(v, c, a, x0, y0, wx, wy):
+    x, y = v
+    ex = np.exp(-(x - x0)**2 / (2 * wx**2))
+    ey = np.exp(-(y - y0)**2 / (2 * wy**2))
+    return c + a*ex*ey
+
+class Gauss2DFitter:
+    def __init__(self, x, y, z, weights=None, autoweight=False, blow=None, bup=None, fixed=None, p0=None):
+        blow = {} if blow is None else blow
+        bup = {} if bup is None else bup
+        fixed = {} if fixed is None else fixed
+        p0 = {} if p0 is None else p0
+        
+        self.x = x
+        self.y = y
+        self.z = z
+        self.autoweight = autoweight
+        self.weights = weights
+        
+        self.parameters = ["c", "a", "x0", "y0", "wx", "wy"]
+        
+        self.blow = {key : -np.inf for key in self.parameters}
+        self.bup = {key : np.inf for key in self.parameters}
+        self.blow["wx"] = 0
+        self.bup["wx"] = np.max(x)-np.min(x)
+        self.blow["x0"] = np.min(x)
+        self.bup["x0"] = np.max(x)
+        
+        self.blow["wy"] = 0
+        self.bup["wy"] = min((np.max(y)-np.min(y)), np.pi)
+        self.blow["y0"] = np.min(y)
+        self.bup["y0"] = np.max(y)
+        
+        for key, val in blow.items():
+            self.set_lower_bound(key, val)
+        for key, val in bup.items():
+            self.set_upper_bound(key, val)
+        
+        self.fixed = fixed
+        self.p0 = p0
+
+    def set_lower_bound(self, key, value):
+        if not key in self.parameters:
+            raise KeyError(f"{key} is not a member of the lower bounds dict.")
+        self.blow[key] = value
+        
+    def set_upper_bound(self, key, value):
+        if not key in self.parameters:
+            raise KeyError(f"{key} is not a member of the upper bounds dict.")
+        self.bup[key] = value
+        
+    def set_fixed(self, key, value):
+        if not key in self.parameters:
+            raise KeyError(f"{key} is not a valid parameter.")
+        self.fixed[key] = value
+    
+    def fit(self):
+        popt, pcov = self.fit_single()
+        
+        if self.weights is None and self.autoweight:
+            peak_value = popt[0] + popt[1] # y0 + a
+            self.calc_weights(peak_value)
+            popt, pcov = self.fit_single()
+        return popt, pcov
+    
+    def calc_weights(self, peak_value):
+        difference = np.abs(self.y - peak_value)
+        self.weights = np.exp(-difference/np.max(difference))
+    
+    def fit_single(self):
+        x = self.x
+        y = self.y
+        z = self.z
+        fixed = self.fixed
+        weights = self.weights
+        lower = [self.blow[key] for key in self.parameters]
+        upper = [self.bup[key] for key in self.parameters]
+        
+        x0_guess = 0.5*(np.max(x) + np.min(x))
+        wx_guess = 0.5*(np.max(x) - np.min(x))
+        
+        y0_guess = 0.5*(np.max(y) + np.min(y))
+        wy_guess = 0.5*(np.max(y) - np.min(y))
+        
+#         if "y0" in fixed and "a" in fixed:
+#             f = lambda x,x0,sig: gauss(x, fixed["y0"], fixed["a"], x0, sig)
+#             p0 = [mean, sigma]
+#             bounds = (lower[2:], upper[2:])
+#             popt,pcov = curve_fit(f, x, y, p0=p0, bounds=bounds, sigma=weights)
+#             popt = [fixed["y0"], fixed["a"], popt[0], popt[1]]
+#         elif "y0" in fixed:
+#             f = lambda x,a,x0,sig: gauss(x, fixed["y0"], a, x0, sig)
+#             p0 = [np.average(y),mean, sigma]
+#             bounds = (lower[1:], upper[1:])
+#             popt,pcov = curve_fit(f, x, y, p0=p0,bounds=bounds, sigma=weights)
+#             popt = [fixed["y0"], popt[0], popt[1], popt[2]]
+#         else:
+        f = gauss2D
+        zavg = np.average(z)
+        c_guess = zavg
+        a_guess = zavg
+        p0 = {
+            "c" : c_guess,
+            "a" : a_guess, 
+            "x0" : x0_guess, 
+            "y0" : y0_guess, 
+            "wx" : wx_guess, 
+            "wy" : wy_guess
+        }
+        for key, val in self.p0.items():
+            p0[key] = val
+        self.p0 = p0
+        p0_vec = [p0[key] for key in self.parameters]
+        bounds = (lower, upper)
+        popt,pcov = curve_fit(f, (x, y), z, p0=p0_vec, bounds=bounds, sigma=weights)
+    
+        return popt, pcov
