@@ -7,7 +7,7 @@ from scipy.optimize import curve_fit
 class Vortector:
     def __init__(self, Xc, Yc, A, vortensity, Sigma, Sigma0,
                  Rlims, levels=[float(x) for x in np.arange(-1, 1.5, 0.05)],
-                 med=0.15, mear=np.inf, mvd=0.01, verbose=False):
+                 med=0.15, mear=np.inf, mvd=0.01, verbose=False, azimuthal_boundaries = [-np.pi, np.pi]):
 
         self.vortensity = vortensity
 
@@ -18,7 +18,7 @@ class Vortector:
         self.Phic = Yc
         self.cell_area = A
 
-        self.azimuthal_boundaries = [-np.pi, np.pi]
+        self.azimuthal_boundaries = azimuthal_boundaries
 
         # Parameters
         self.Rlims = Rlims
@@ -470,6 +470,57 @@ class Vortector:
                     print(
                         f"- fitting sigma to n = {c['n']}: finished after {n+2} attempt")
                 break
+        
+        self.calc_fit_difference_2D(c)
+    
+    def calc_fit_difference_2D(self, c, varname="sigma"):
+        """ Calculate the difference of the fit to the data.
+        
+        Parameters
+        ----------
+        c : dict
+            Vortex info.
+        varname : str
+            Name of the fit variable.
+        """
+        pre = f"{varname}_fit"
+        y0 = c[f"{pre}_phi_y0"]
+        a = c[f"{pre}_phi_a"]
+        phi0 = c[f"{pre}_phi_x0"]
+        sigma_phi = c[f"{pre}_phi_sigma"]
+        r0 = c[f"{pre}_r_x0"]
+        sigma_r = c[f"{pre}_r_sigma"]
+        def f(r,phi):
+            er = np.exp(-(r-r0)**2/(2*sigma_r**2))
+            ephi = np.exp(-(phi-phi0)**2/(2*sigma_phi**2))
+            return y0 + a*er*ephi
+        
+        if varname == "sigma":
+            vals = self.Rho_view
+        elif varname == "vortensity":
+            vals = self.vortensity_view
+        else:
+            raise AttributeError(f"Can't calculate fit difference in 2D for '{varname}'!")
+        
+        R = self.Xc_view
+        PHI = self.Yc_view
+        
+        mc = c["mask_view"]
+        me = ((R-r0)/sigma_r)**2 + ((PHI-phi0)/sigma_phi)**2 <= 1
+        
+        Ae = np.sum(self.cell_area_view[me])
+        Ac = c["area"]
+        c[f"{pre}_ellipse_area_numerical"] = Ae
+        c[f"{pre}_area_ratio_ellipse_to_contour"] = Ae/Ac
+        
+        for region, mask, area in zip(["contour", "ellipse"], [mc, me], [Ac, Ae]):
+            fitvals = f(R[mask], PHI[mask])
+            numvals = vals[mask]
+            diff = np.sum(np.abs(fitvals - numvals))
+            reldiff = diff/(area*a)
+            c[f"{pre}_{region}_diff_2D"] = diff
+            c[f"{pre}_{region}_reldiff_2D"] = reldiff
+            
 
     def fit_gaussian_phi(self, c, key, ref="contour", center=None, fixed=None, blow=None, bup=None, p0=None, fix_avg=False, autoweight=True):
         """ Fit a gaussian in phi direction.
@@ -1434,8 +1485,6 @@ def save_fit(c, varname, axis, fit, parameters=["y0", "a", "x0", "sigma"]):
     for n, param in enumerate(parameters):
         c[f"{pre}_{param}"] = fit["popt"][n]
     for key, val in fit.items():
-        if key == "popt":
-            continue
         c[f"{pre}_{key}"] = fit[key]
 
 
