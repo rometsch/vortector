@@ -437,7 +437,9 @@ class Vortector:
                 # fixed = {"y0": popt[0], "a": popt[1],"sigma" : popt[3]},
             )
             if fit_phi_new["diff"] < fit_phi["diff"]:
-                print(f"accepted {n+2} fit in phi")
+                if self.verbose:
+                    print(
+                        f"- fitting sigma to n = {c['n']}: accepted fit {n+2} in phi")
                 fit_phi = fit_phi_new
                 save_fit(c, "sigma", "phi", fit_phi)
                 fit_phi_stopped = False
@@ -455,14 +457,18 @@ class Vortector:
                 fixed={"y0": y0_phi, "a": a_phi})
 
             if fit_r_new["diff"] < fit_r["diff"]:
-                print(f"accepted {n+2} fit in r")
+                if self.verbose:
+                    print(f"- fitting sigma: accepted fit {n+2} in r")
                 fit_r = fit_r_new
                 save_fit(c, "sigma", "r", fit_r)
                 fit_r_stopped = False
             else:
                 fit_r_stopped = True
-            
+
             if fit_r_stopped and fit_phi_stopped:
+                if self.verbose:
+                    print(
+                        f"- fitting sigma to n = {c['n']}: finished after {n+2} attempt")
                 break
 
     def fit_gaussian_phi(self, c, key, ref="contour", center=None, fixed=None, blow=None, bup=None, p0=None, fix_avg=False, autoweight=True):
@@ -490,8 +496,6 @@ class Vortector:
         if center is None:
             center = ref
         inds = self.select_center_inds(c, center)
-        print(
-            f"inds inside phi fit for {key} with ref {ref} and center {center}", inds)
         mask_r, mask_phi = self.select_fit_region(c, ref)
         vals = self.select_fit_quantity(key)
 
@@ -520,11 +524,11 @@ class Vortector:
         diff = np.sum(np.abs(y - gauss(x, *popt)))
         reldiff = diff / np.sum(y - np.min(y))
 
-        fig, ax = plt.subplots()
-        ax.plot(x, y)
-        ax.plot(x, gauss(x, *popt), "--")
-        ax.set_title(
-            fitter.name + f" reldiff={reldiff:.2e}, diff={diff:.2e}, r = {self.Xc_view[inds]:.2e} phi = {self.Yc_view[inds]:.2e}")
+        # fig, ax = plt.subplots()
+        # ax.plot(x, y)
+        # ax.plot(x, gauss(x, *popt), "--")
+        # ax.set_title(
+        #     fitter.name + f" reldiff={reldiff:.2e}, diff={diff:.2e}, r = {self.Xc_view[inds]:.2e} phi = {self.Yc_view[inds]:.2e}")
 
         fit = {
             "popt": popt,
@@ -592,14 +596,12 @@ class Vortector:
             "reldiff": reldiff,
             "diff": diff
         }
-        
-        
-        fig, ax = plt.subplots()
-        ax.plot(x, y)
-        ax.plot(x, gauss(x, *popt), "--")
-        ax.set_title(
-            fitter.name + f" reldiff={reldiff:.2e}, diff={diff:.2e}, r = {self.Xc_view[inds]:.2e} phi = {self.Yc_view[inds]:.2e}")
 
+        # fig, ax = plt.subplots()
+        # ax.plot(x, y)
+        # ax.plot(x, gauss(x, *popt), "--")
+        # ax.set_title(
+        #     fitter.name + f" reldiff={reldiff:.2e}, diff={diff:.2e}, r = {self.Xc_view[inds]:.2e} phi = {self.Yc_view[inds]:.2e}")
 
         return fit
 
@@ -684,22 +686,27 @@ class Vortector:
         ref : str
             Reference for the vortex region (contour/vortensity/sigma).
         """
-        c = [c for c in self.vortices][n]
-        center = ref if center is None else center
-        inds = self.select_center_inds(c, center)
-        inds = c[f"{key}_fit_r_inds"]
-        mask_r, mask_phi = self.select_fit_region(c, ref)
-        vals = self.select_fit_quantity(key)
-
-        mask = mask_r
-
-        y = vals[:, inds[1]]
-        x = self.Xc_view[:, 0]
-
-        ax.plot(x, y, label=f"data slice n={c['n']}")
-        ax.plot(x[mask], y[mask], label="vortex region")
+        try:
+            c = [c for c in self.vortices][n]
+        except KeyError:
+            print("No vortex found.")
+            return
 
         try:
+            center = ref if center is None else center
+            inds = self.select_center_inds(c, center)
+            inds = c[f"{key}_fit_r_inds"]
+            mask_r, mask_phi = self.select_fit_region(c, ref)
+            vals = self.select_fit_quantity(key)
+
+            mask = mask_r
+
+            y = vals[:, inds[1]]
+            x = self.Xc_view[:, 0]
+
+            ax.plot(x, y, label=f"data slice n={c['n']}")
+            ax.plot(x[mask], y[mask], label="vortex region")
+
             y0 = c[key + "_fit_r_y0"]
             x0 = c[key + "_fit_r_x0"]
             a = c[key + "_fit_r_a"]
@@ -711,8 +718,9 @@ class Vortector:
                     ls="--", color="C2", lw=2, label=f"fit, reldiff={reldiff:.2e}")
             ax.plot(x, gauss(x, *popt), color="C3", alpha=0.3)
             ax.plot([x0], [y[inds[0]]], "x")
-        except KeyError:
-            pass
+        except KeyError as e:
+            print(f"Warning: KeyError encountered in showing r fit: {e}")
+            return
 
         ax.set_xlabel(r"$r$")
         ax.set_ylabel(f"{key}")
@@ -733,21 +741,25 @@ class Vortector:
         ref : str
             Reference for the vortex region (contour/vortensity/sigma).
         """
-        c = [c for c in self.vortices][n]
-        center = ref if center is None else center
-        inds = self.select_center_inds(c, center)
-        inds = c[f"{key}_fit_phi_inds"]
-        mask_r, mask_phi = self.select_fit_region(c, ref)
-        vals = self.select_fit_quantity(key)
-        mask = mask_phi
-
-        y = vals[inds[0], :]
-        x = self.Yc_view[0, :]
-
-        ax.plot(x, y, label=f"data slice n={c['n']}")
-        plot_periodic(ax, x, y, mask, label="vortex region")
+        try:
+            c = [c for c in self.vortices][n]
+        except KeyError:
+            print("No vortex found.")
+            return
 
         try:
+            center = ref if center is None else center
+            inds = self.select_center_inds(c, center)
+            inds = c[f"{key}_fit_phi_inds"]
+            mask_r, mask_phi = self.select_fit_region(c, ref)
+            vals = self.select_fit_quantity(key)
+            mask = mask_phi
+
+            y = vals[inds[0], :]
+            x = self.Yc_view[0, :]
+
+            ax.plot(x, y, label=f"data slice n={c['n']}")
+            plot_periodic(ax, x, y, mask, label="vortex region")
             y0 = c[key + "_fit_phi_y0"]
             x0 = c[key + "_fit_phi_x0"]
             # x0 = self.clamp_periodic(x0)
@@ -773,8 +785,9 @@ class Vortector:
             plot_periodic(ax, xfull, gauss(xfull, *popt), bnd=bnd,
                           ls="-", lw=1, color="C3", alpha=0.3)
             ax.plot([self.clamp_periodic(x0)], y[[inds[1]]], "x")
-        except KeyError:
-            pass
+        except KeyError as e:
+            print(f"Warning: KeyError encountered in showing phi fit: {e}")
+            return
 
         ax.set_xlabel(r"$\phi$")
         ax.set_ylabel(f"{key}")
