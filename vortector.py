@@ -371,12 +371,14 @@ class Vortector:
                 self.find_vortensity_min_position(c)
                 self.find_density_max_position(c)
                 self.fit_gaussians(c)
-            except ValueError as e:
-                print("Warning: ValueError encountered in calculating vortex properties:", e)
+            except (ValueError, RuntimeError) as e:
+                # print("Warning: ValueError encountered in calculating vortex properties:", e)
+                pass
             try:
                 self.calc_fit_difference_2D(c)
             except KeyError as e:
-                print("Warning: KeyError encountered in calculating fit differences:", e)
+                # print("Warning: KeyError encountered in calculating fit differences:", e)
+                pass
 
     def fit_gaussians(self, vort):
         inds = vort["vortensity_min_inds"]
@@ -894,10 +896,10 @@ class Vortector:
             ax.plot(x, y, label=f"data slice n={c['n']}")
             ax.plot(x[mask], y[mask], label="vortex region")
 
-            y0 = c[key + "_fit_r_y0"]
-            x0 = c[key + "_fit_r_x0"]
-            a = c[key + "_fit_r_a"]
-            sig = c[key + "_fit_r_sigma"]
+            y0 = c[key + "_fit_2D_c"]
+            x0 = c[key + "_fit_2D_r0"]
+            a = c[key + "_fit_2D_a"]
+            sig = c[key + "_fit_2D_sigma_r"]
             popt = [y0, a, x0, sig]
 
             ax.plot(x[mask], gauss(x[mask], *popt),
@@ -945,11 +947,11 @@ class Vortector:
 
             ax.plot(x, y, label=f"data slice n={c['n']}")
             plot_periodic(ax, x, y, mask, label="vortex region")
-            y0 = c[key + "_fit_phi_y0"]
-            x0 = c[key + "_fit_phi_x0"]
+            y0 = c[key + "_fit_2D_c"]
+            x0 = c[key + "_fit_2D_phi0"]
             # x0 = self.clamp_periodic(x0)
-            a = c[key + "_fit_phi_a"]
-            sig = c[key + "_fit_phi_sigma"]
+            a = c[key + "_fit_2D_a"]
+            sig = c[key + "_fit_2D_sigma_phi"]
 
             bnd = self.azimuthal_boundaries
             L = bnd[1] - bnd[0]
@@ -1290,26 +1292,25 @@ class Vortector:
         self.show_radial_fit(ax, key, n, ref=ref)
         ax.set_title(f"rad, ref={ref}")
         ax.set_ylim(-0.5, 1.5)
+        ax.set_xlabel("")
 
         ax = axes[0]
         self.show_azimuthal_fit(ax, key, n, ref=ref)
         ax.set_title(f"phi, ref={ref}")
         ax.set_ylim(-0.5, 1.5)
+        ax.set_xlabel("")
 
         ax = axes[3]
         key = "sigma"
         ref = "sigma"
         center = "sigma"
         self.show_radial_fit(ax, key, n, ref=ref, center=center)
-        ax.set_title(f"rad, ref={ref}")
 
         ax = axes[2]
         self.show_azimuthal_fit(ax, key, n, ref=ref, center=center)
-        ax.set_title(f"phi, ref={ref}")
+
 
     def show_fit_overview_2D(self, axes=None, bnd_lines=False, bnd_pnts=True, show_fits=True, fit_contours=True):
-
-        from matplotlib.patches import Ellipse
         import matplotlib.patheffects as pe
 
         if axes is None:
@@ -1342,35 +1343,14 @@ class Vortector:
         except KeyError:
             vmax = np.max(Z)
 
-        norm = colors.Normalize(0, vmax=vmax)
+        vmin = min(1e-5*vmax, np.min(Z))
+        norm = colors.LogNorm(vmin=vmin, vmax=vmax)
         img_sigma = ax.pcolormesh(
             Xc, Yc, Z, cmap=cmap, norm=norm, rasterized=True, shading="auto")
 
         ax.contour(Xc, Yc, Z, levels=np.arange(
             0, vmax, vmax/20), colors="gray")
 
-        def plot_vline_periodic(ax, x, y, dy, **kwargs):
-            bup = np.pi
-            blow = -np.pi
-            L = bup - blow
-            y = (y-blow) % L + blow
-
-            at_upper_bnd = y + dy > bup
-            at_lower_bnd = y - dy < blow
-            if at_upper_bnd:
-                line, = ax.plot([x, x], [y-dy, bup], **kwargs)
-                c = line.get_color()
-                ls = line.get_linestyle()
-                lw = line.get_linewidth()
-                ax.plot([x, x], [blow, y-L+dy], ls=ls, lw=lw, c=c)
-            elif at_lower_bnd:
-                line, = ax.plot([x, x], [y+dy, blow], **kwargs)
-                c = line.get_color()
-                ls = line.get_linestyle()
-                lw = line.get_linewidth()
-                ax.plot([x, x], [bup, y+L-dy], ls=ls, lw=lw, c=c)
-            else:
-                ax.plot([x, x], [y-dy, y+dy], **kwargs)
 
         for ax, fit_color, varname, img in zip(axes, ["C1", "C2"], [r"$\varpi/\varpi_0$", r"$\Sigma$"], [img_vortensity, img_sigma]):
             for n, vort in enumerate(self.vortices):
@@ -1397,102 +1377,39 @@ class Vortector:
                 L = bup - blow
                 if show_fits:
                     try:
-
-                        r0 = vort["vortensity_fit_2D_r0"]
-                        sigma_r = vort["vortensity_fit_2D_sigma_r"]
-                        phi0 = vort["vortensity_fit_2D_phi0"]
-                        sigma_phi = vort["vortensity_fit_2D_sigma_phi"]
-                        phi0 = (phi0 - blow) % L + blow
-                        ax.plot([r0 + sigma_r, r0 - sigma_r],
-                                [phi0, phi0], ":", color=fit_color, lw=1)
-                        plot_vline_periodic(
-                            ax, r0, phi0, sigma_phi, ls=":", color=fit_color, lw=1)
-
-                        e = Ellipse(xy=[r0, phi0], width=2*sigma_r, height=2*sigma_phi,
-                                    angle=0, fc="None", lw=1, edgecolor=fit_color, ls=":")
-                        ax.add_artist(e)
-                        e.set_zorder(1000)
-                        e.set_clip_box(ax.bbox)
-                        e = Ellipse(xy=[r0, phi0+2*np.pi*(1 if phi0 < 0 else -1)], width=2*sigma_r,
-                                    height=2*sigma_phi, angle=0, fc="None", lw=1, edgecolor=fit_color, ls=":")
-                        ax.add_artist(e)
-                        e.set_zorder(1000)
-                        e.set_clip_box(ax.bbox)
-
-                        if fit_contours:
-                            popt_vort = vort["vortensity_fit_2D_popt"]
-                            N_cnt = 11
-                            cls_cnt = [colors.to_hex([1,1,1,x], keep_alpha=True) for x in np.linspace(0.1,1,N_cnt)]
-                            cls_cnt_vort = [x for x in reversed(cls_cnt)]
-                            lw = 1
-                            axes[0].contour(Xc, Yc, gauss2D(
-                                (Xc, Yc), *popt_vort), N_cnt, colors=cls_cnt_vort, linewidths=lw)
-                            if phi0 < 0:
-                                popt = popt_vort.copy()
-                                popt[3] += L
-                                axes[0].contour(Xc, Yc, gauss2D(
-                                    (Xc, Yc), *popt), N_cnt, colors=cls_cnt_vort, linewidths=lw)
-                            else:
-                                popt = popt_vort.copy()
-                                popt[3] -= L
-                                # axes[0].contour(Xc, Yc, gauss2D(
-                                #     (Xc, Yc), *popt), N_cnt, colors=cls_cnt_vort, linewidths=lw)
-                        r0 = vort["sigma_fit_2D_r0"]
-                        sigma_r = vort["sigma_fit_2D_sigma_r"]
-                        phi0 = vort["sigma_fit_2D_phi0"]
-                        phi0 = (phi0 - blow) % L + blow
-                        sigma_phi = vort["sigma_fit_2D_sigma_phi"]
-
                         lw = 1
                         path_effects = [
                             pe.Stroke(linewidth=2*lw, foreground='w'), pe.Normal()]
 
-                        ax.plot([r0 + sigma_r, r0 - sigma_r], [phi0, phi0], "-", lw=lw,
-                                color=fit_color, alpha=0.5, path_effects=path_effects)
-                        plot_vline_periodic(
-                            ax, r0, phi0, sigma_phi, ls="-", color=fit_color, lw=lw, alpha=0.5, path_effects=path_effects)
 
-                        e = Ellipse(xy=[r0, phi0], width=2*sigma_r, height=2*sigma_phi, angle=0,
-                                    fc="None", lw=lw, edgecolor=fit_color, path_effects=path_effects)
-                        ax.add_artist(e)
-                        e.set_zorder(1000)
-                        e.set_clip_box(ax.bbox)
-                        e = Ellipse(xy=[r0, phi0+2*np.pi*(1 if phi0 < 0 else -1)], width=2*sigma_r, height=2 *
-                                    sigma_phi, angle=0, fc="None", lw=lw, edgecolor=fit_color, path_effects=path_effects)
-                        ax.add_artist(e)
-                        e.set_zorder(1000)
-                        e.set_clip_box(ax.bbox)
+                        r0 = vort["vortensity_fit_2D_r0"]
+                        sigma_r = vort["vortensity_fit_2D_sigma_r"]
+                        w = 2*np.sqrt(2*np.log(2))*sigma_r
+                        phi0 = vort["vortensity_fit_2D_phi0"]
+                        sigma_phi = vort["vortensity_fit_2D_sigma_phi"]
+                        phi0 = (phi0 - blow) % L + blow
+                        h = 2*np.sqrt(2*np.log(2))*sigma_phi
                         
-                        if fit_contours:
-                            popt_rho = vort["sigma_fit_2D_popt"]
-                            lw = 1
-                            axes[1].contour(Xc, Yc, gauss2D(
-                                (Xc, Yc), *popt_rho), N_cnt, colors=cls_cnt, linewidths=lw)
-                            if phi0 < 0:
-                                popt = popt_rho.copy()
-                                popt[3] += L
-                                axes[1].contour(Xc, Yc, gauss2D(
-                                    (Xc, Yc), *popt), N_cnt, colors=cls_cnt, linewidths=lw)
-                            else:
-                                popt = popt_rho.copy()
-                                popt[3] -= L
-                                # axes[1].contour(Xc, Yc, gauss2D(
-                                #     (Xc, Yc), *popt), N_cnt, colors=cls_cnt, linewidths=lw)
+                        lw = 1
+                        plot_ellipse_periodic(ax, r0, phi0, w, h, crosshair=True, color="C1", ls="-", lw=2*lw, path_effects=path_effects)
+                        plot_ellipse_periodic(axes[0], r0, phi0, 2*sigma_r, 2*sigma_phi, color="C1", ls="-", lw=0.5*lw)
+                        plot_ellipse_periodic(axes[0], r0, phi0, 4*sigma_r, 4*sigma_phi, color="C1", ls="-", lw=0.5*lw)
+                        plot_ellipse_periodic(axes[0], r0, phi0, 6*sigma_r, 6*sigma_phi, color="C1", ls="-", lw=0.5*lw)
+                        plot_ellipse_periodic(axes[0], r0, phi0, 8*sigma_r, 8*sigma_phi, color="C1", ls="-", lw=0.5*lw)
 
+                        r0 = vort["sigma_fit_2D_r0"]
+                        sigma_r = vort["sigma_fit_2D_sigma_r"]
+                        w = 2*np.sqrt(2*np.log(2))*sigma_r
+                        phi0 = vort["sigma_fit_2D_phi0"]
+                        phi0 = (phi0 - blow) % L + blow
+                        sigma_phi = vort["sigma_fit_2D_sigma_phi"]
+                        h = 2*np.sqrt(2*np.log(2))*sigma_phi
 
-        #                 pre = "sigma_fit"
-        #                 y0 = vort[f"{pre}_phi_y0"]
-        #                 a = vort[f"{pre}_phi_a"]
-        #                 phi0 = vort[f"{pre}_phi_x0"]
-        #                 sigma_phi = vort[f"{pre}_phi_sigma"]
-        #                 r0 = vort[f"{pre}_r_x0"]
-        #                 sigma_r = vort[f"{pre}_r_sigma"]
-
-        #                 R = Xc
-        #                 PHI = Yc
-        #                 me = ((R-r0)/sigma_r)**2 + ((PHI-phi0)/sigma_phi)**2 <= 1
-
-        #                 ax.contour(R, PHI, me)
+                        plot_ellipse_periodic(ax, r0, phi0, w, h, color="C2", ls="-", lw=2*lw, crosshair=True, path_effects=path_effects)
+                        plot_ellipse_periodic(axes[1], r0, phi0, 2*sigma_r, 2*sigma_phi, color="C2", ls="-", lw=0.5*lw)
+                        plot_ellipse_periodic(axes[1], r0, phi0, 4*sigma_r, 4*sigma_phi, color="C2", ls="-", lw=0.5*lw)
+                        plot_ellipse_periodic(axes[1], r0, phi0, 6*sigma_r, 6*sigma_phi, color="C2", ls="-", lw=0.5*lw)
+                        plot_ellipse_periodic(axes[1], r0, phi0, 8*sigma_r, 8*sigma_phi, color="C2", ls="-", lw=0.5*lw)
                     except KeyError:
                         pass
 
@@ -1502,11 +1419,11 @@ class Vortector:
             ax.set_yticklabels(
                 [r"$-\pi$", r"$-\pi/2$", "0", r"$\pi/2$", r"$\pi$"])
 
-            ax.set_xlim(5.2, 10)
+            # ax.set_xlim(5.2, 10)
 
             ax.set_ylim(-np.pi, np.pi)
 
-            cbar = fig.colorbar(img, ax=ax)
+            cbar = ax.get_figure().colorbar(img, ax=ax)
             cbar.set_label(varname)
 
 
@@ -1902,6 +1819,82 @@ def plot_periodic(ax, x, y, m=None, bnd=(-np.pi, np.pi), **kwargs):
     line, = ax.plot(x[m] - L, y[m], **kwa)
     line.set_label(None)
 
+def plot_vline_periodic(ax, x, y, dy, **kwargs):
+    bup = np.pi
+    blow = -np.pi
+    L = bup - blow
+    y = (y-blow) % L + blow
+
+    at_upper_bnd = y + dy > bup
+    at_lower_bnd = y - dy < blow
+    if at_upper_bnd:
+        line, = ax.plot([x, x], [y-dy, bup], **kwargs)
+        c = line.get_color()
+        ls = line.get_linestyle()
+        lw = line.get_linewidth()
+        ax.plot([x, x], [blow, y-L+dy], ls=ls, lw=lw, c=c)
+    elif at_lower_bnd:
+        line, = ax.plot([x, x], [y+dy, blow], **kwargs)
+        c = line.get_color()
+        ls = line.get_linestyle()
+        lw = line.get_linewidth()
+        ax.plot([x, x], [bup, y+L-dy], ls=ls, lw=lw, c=c)
+    else:
+        ax.plot([x, x], [y-dy, y+dy], **kwargs)
+
+
+def plot_ellipse_periodic(ax, x, y, w, h, crosshair=False, bnd=(-np.pi, np.pi), **kwargs):
+    """ Show an Ellipse in a plot periodic in y direction.
+    
+    Parameters
+    ----------
+    ax : plt.axes
+        Axes to plot on.
+    x : float
+        Center in x.
+    y : float
+        Center in y.
+    w : float
+        Width in x.
+    h : float
+        Height in y.
+    crosshair : bool
+        Show a cross indicating the center.
+    bnd : (float, float)
+        Locations of the periodic boundary.
+    """
+    from matplotlib.patches import Ellipse
+    L = bnd[1] - bnd[0]
+    C = 0.5*(bnd[1] + bnd[0])
+    if crosshair:
+        line_args = kwargs.copy()
+        if "path_effects" in line_args:
+            del line_args["path_effects"]
+        ax.plot([x + w/2, x - w/2],
+                [y, y], **line_args)
+        plot_vline_periodic(
+            ax, x, y, h/2, **line_args)
+
+    plot_args = kwargs.copy()
+    if "color" in kwargs:
+        plot_args["edgecolor"] = kwargs["color"]
+        del plot_args["color"]
+    else:
+        kwargs["edgecolor"] = "C0"
+    e = Ellipse(xy=[x, y], width=w, height=h,
+                fc="None", **kwargs)
+    ax.add_artist(e)
+    e.set_zorder(1000)
+    e.set_clip_box(ax.bbox)
+    y_clone = y+L*(1 if y < C else -1)
+    e = Ellipse(xy=[x, y_clone], width=w,
+                height=h, angle=0, fc="None", **kwargs)
+    ax.add_artist(e)
+    e.set_zorder(1000)
+    e.set_clip_box(ax.bbox)
+    
+    
+    
 
 def gauss2D(v, c, a, x0, y0, sx, sy):
     x, y = v
