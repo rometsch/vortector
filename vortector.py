@@ -878,7 +878,7 @@ class Vortector:
         """
         try:
             c = [c for c in self.vortices][n]
-        except KeyError:
+        except IndexError:
             print("No vortex found.")
             return
 
@@ -931,7 +931,7 @@ class Vortector:
         """
         try:
             c = [c for c in self.vortices][n]
-        except KeyError:
+        except IndexError:
             print("No vortex found.")
             return
 
@@ -1309,7 +1309,7 @@ class Vortector:
         ax = axes[2]
         self.show_azimuthal_fit(ax, key, n, ref=ref, center=center)
 
-    def show_fit_overview_2D(self, n=0, axes=None, bnd_lines=False, bnd_pnts=True, show_fits=True, fit_contours=True):
+    def show_fit_overview_2D(self, n=0, axes=None, bnd_lines=False, bnd_pnts=False, show_fits=True, fit_contours=True):
         if axes is None:
             fig, axes = plt.subplots(2, 5, figsize=(10, 6), dpi=150,
                                      #  sharex="col",
@@ -1319,29 +1319,36 @@ class Vortector:
             if len(axes) != 8:
                 raise ValueError(
                     "You need to pass an array with 2 pyplot axes!")
-
         plt.subplots_adjust(hspace=.001, wspace=0.001)
 
         self.show_fit_overview_2D_single("vortensity", ax=axes[1, 0],
                                          bnd_lines=bnd_lines, bnd_pnts=bnd_pnts,
                                          show_fits=show_fits, fit_contours=fit_contours,
                                          cbar_axes=[axes[1, 0], axes[1, 1]])
-        self.show_radial_fit(axes[0, 0], "vortensity", 0, ref="contour")
-        axes[0, 0].set_ylim(-0.5, 1)
-        axes[0, 0].set_xticklabels([])
-        axes[0, 0].set_xlabel("")
-        axes[0, 0].get_legend().remove()
+        
+        ax = axes[0,0]
+        self.show_radial_fit(ax, "vortensity", 0, ref="contour")
+        ax.set_ylim(-0.5, 1)
+        ax.set_xticklabels([])
+        ax.set_xlabel("")
+        leg = ax.get_legend()
+        if leg is not None:
+            leg.remove()
+        xticks = ax.get_yticks()
+        xticklabels = ax.get_yticklabels()
 
         ax = axes[1, 1]
         self.show_azimuthal_fit(ax, "vortensity", 0, ref="contour")
         switch_axes_xy(ax)
-        ax.get_legend().remove()
+        leg = ax.get_legend()
+        if leg is not None:
+            leg.remove()
         ax.set_xlabel("")
         ax.set_ylabel("")
         ax.set_yticklabels([])
-        xticks = ax.get_xticks()
-        ax.set_xticklabels([f"{x:.1e}" for x in xticks],
-                           rotation=270, Fontsize=8)
+        ax.set_xticks(xticks)
+        ax.set_xticklabels([f"{x:.1f}" for x in xticks], rotation=270)
+        ax.set_ylim(-np.pi, np.pi)
 
         self.show_fit_overview_2D_single("sigma", ax=axes[1, 3],
                                          bnd_lines=bnd_lines, bnd_pnts=bnd_pnts,
@@ -1351,18 +1358,28 @@ class Vortector:
         self.show_radial_fit(ax, "sigma", 0, ref="contour")
         ax.set_xticklabels([])
         ax.set_xlabel("")
-        ax.get_legend().remove()
+        leg = ax.get_legend()
+        if leg is not None:
+            leg.remove()
+        xticks = ax.get_yticks()
+        ax.set_ylim(bottom=0)
 
         ax = axes[1, 4]
         self.show_azimuthal_fit(ax, "sigma", 0, ref="contour")
         switch_axes_xy(ax)
-        ax.get_legend().remove()
+        leg = ax.get_legend()
+        if leg is not None:
+            leg.remove()
         ax.set_xlabel("")
         ax.set_ylabel("")
         ax.set_yticklabels([])
-        xticks = ax.get_xticks()
+        # xticks = ax.get_xticks()
+        ax.set_xticks(xticks)
         ax.set_xticklabels([f"{x:.1e}" for x in xticks],
-                           rotation=270, Fontsize=8)
+                           rotation=270, fontsize=8)
+        ax.set_xlim(left=0)
+        ax.set_ylim(-np.pi, np.pi)
+
 
         for ax in [axes[0, 1], axes[0, 4], axes[0, 2], axes[1, 2]]:
             ax.axis("off")
@@ -1415,7 +1432,7 @@ class Vortector:
             try:
                 vmax = self.vortices[0]["sigma_fit_2D_c"] + \
                     self.vortices[0]["sigma_fit_2D_a"]
-            except KeyError:
+            except (KeyError, IndexError):
                 vmax = np.max(Z)
 
             vmin = min(1e-5*vmax, np.min(Z))
@@ -1465,18 +1482,23 @@ class Vortector:
                     phi0 = (phi0 - blow) % L + blow
                     h = 2*np.sqrt(2*np.log(2))*sigma_phi
 
+                    color_vortensity = "C0"
                     lw = 1
-                    plot_ellipse_periodic(
-                        ax, r0, phi0, w, h, crosshair=True, color="C1", ls="-", lw=2*lw, path_effects=path_effects)
-                    if varname == "vortensity":
+                    if n == 0:
                         plot_ellipse_periodic(
-                            ax, r0, phi0, 2*sigma_r, 2*sigma_phi, color="C1", ls="-", lw=0.5*lw)
+                        ax, r0, phi0, w, h, crosshair=True, color=color_vortensity, ls="-", lw=lw, path_effects=path_effects)
+                    else:
                         plot_ellipse_periodic(
-                            ax, r0, phi0, 4*sigma_r, 4*sigma_phi, color="C1", ls="-", lw=0.5*lw)
-                        plot_ellipse_periodic(
-                            ax, r0, phi0, 6*sigma_r, 6*sigma_phi, color="C1", ls="-", lw=0.5*lw)
-                        plot_ellipse_periodic(
-                            ax, r0, phi0, 8*sigma_r, 8*sigma_phi, color="C1", ls="-", lw=0.5*lw)
+                        ax, r0, phi0, w, h, color=color_vortensity, ls="-", lw=lw)
+                    # if varname == "vortensity":
+                    #     plot_ellipse_periodic(
+                    #         ax, r0, phi0, 2*sigma_r, 2*sigma_phi, color=color_vortensity, ls="-", lw=0.5*lw)
+                    #     plot_ellipse_periodic(
+                    #         ax, r0, phi0, 4*sigma_r, 4*sigma_phi, color=color_vortensity, ls="-", lw=0.5*lw)
+                    #     plot_ellipse_periodic(
+                    #         ax, r0, phi0, 6*sigma_r, 6*sigma_phi, color=color_vortensity, ls="-", lw=0.5*lw)
+                    #     plot_ellipse_periodic(
+                    #         ax, r0, phi0, 8*sigma_r, 8*sigma_phi, color=color_vortensity, ls="-", lw=0.5*lw)
 
                     r0 = vort["sigma_fit_2D_r0"]
                     sigma_r = vort["sigma_fit_2D_sigma_r"]
@@ -1486,17 +1508,21 @@ class Vortector:
                     sigma_phi = vort["sigma_fit_2D_sigma_phi"]
                     h = 2*np.sqrt(2*np.log(2))*sigma_phi
 
-                    plot_ellipse_periodic(
-                        ax, r0, phi0, w, h, color="C2", ls="-", lw=2*lw, crosshair=True, path_effects=path_effects)
-                    if varname == "sigma":
+                    if n == 0:
                         plot_ellipse_periodic(
-                            ax, r0, phi0, 2*sigma_r, 2*sigma_phi, color="C2", ls="-", lw=0.5*lw)
+                            ax, r0, phi0, w, h, color="C2", ls="-", lw=lw, crosshair=True, path_effects=path_effects)
+                    else:
                         plot_ellipse_periodic(
-                            ax, r0, phi0, 4*sigma_r, 4*sigma_phi, color="C2", ls="-", lw=0.5*lw)
-                        plot_ellipse_periodic(
-                            ax, r0, phi0, 6*sigma_r, 6*sigma_phi, color="C2", ls="-", lw=0.5*lw)
-                        plot_ellipse_periodic(
-                            ax, r0, phi0, 8*sigma_r, 8*sigma_phi, color="C2", ls="-", lw=0.5*lw)
+                            ax, r0, phi0, w, h, color="C2", ls="-", lw=lw)
+                    # if varname == "sigma":
+                    #     plot_ellipse_periodic(
+                    #         ax, r0, phi0, 2*sigma_r, 2*sigma_phi, color="C2", ls="-", lw=0.5*lw)
+                    #     plot_ellipse_periodic(
+                    #         ax, r0, phi0, 4*sigma_r, 4*sigma_phi, color="C2", ls="-", lw=0.5*lw)
+                    #     plot_ellipse_periodic(
+                    #         ax, r0, phi0, 6*sigma_r, 6*sigma_phi, color="C2", ls="-", lw=0.5*lw)
+                    #     plot_ellipse_periodic(
+                    #         ax, r0, phi0, 8*sigma_r, 8*sigma_phi, color="C2", ls="-", lw=0.5*lw)
                 except KeyError:
                     pass
 
@@ -1985,15 +2011,7 @@ def plot_ellipse_periodic(ax, x, y, w, h, crosshair=False, bnd=(-np.pi, np.pi), 
     from matplotlib.patches import Ellipse
     L = bnd[1] - bnd[0]
     C = 0.5*(bnd[1] + bnd[0])
-    if crosshair:
-        line_args = kwargs.copy()
-        if "path_effects" in line_args:
-            del line_args["path_effects"]
-        ax.plot([x + w/2, x - w/2],
-                [y, y], **line_args)
-        plot_vline_periodic(
-            ax, x, y, h/2, **line_args)
-
+    
     plot_args = kwargs.copy()
     if "color" in kwargs:
         plot_args["edgecolor"] = kwargs["color"]
@@ -2011,6 +2029,21 @@ def plot_ellipse_periodic(ax, x, y, w, h, crosshair=False, bnd=(-np.pi, np.pi), 
     ax.add_artist(e)
     e.set_zorder(1000)
     e.set_clip_box(ax.bbox)
+
+    lw = e.get_linewidth()
+
+    if crosshair:
+        line_args = kwargs.copy()
+        for k in ["lw", "linewidth"]:
+            if k in line_args:
+                del line_args[k]
+        line_args["lw"] = lw/2
+        if "path_effects" in line_args:
+            del line_args["path_effects"]
+        ax.plot([x + w/2, x - w/2],
+                [y, y], **line_args)
+        plot_vline_periodic(
+            ax, x, y, h/2, **line_args)
 
 
 def gauss2D(v, c, a, x0, y0, sx, sy):
