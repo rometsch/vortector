@@ -141,7 +141,7 @@ To give a precise definition for the vortex which , we fit bell curves to the su
 and the normalized vortensity, $\varpi/\varpi_0$.
 The function is composed of two bell curves in radial and azimuthal direction as
 \begin{align}
-  f(r, \phi) = c + a \exp\left( - \frac{(r - r_0)^2}{\sigma_r^2} \right) \exp\left( - \frac{(\phi - \phi_0)^2}{\sigma_\phi^2} \right)\,.
+  f(r, \phi) = c + a \exp\left( - \frac{(r - r_0)^2}{2 \sigma_r^2} \right) \exp\left( - \frac{(\phi - \phi_0)^2}{2 \sigma_\phi^2} \right)\,.
 \end{align}
 
 Then the vortex can be defined as the region enclosed by an ellipse (in $r-\phi$)
@@ -193,8 +193,8 @@ At this point, the integral only depends on constants and can be integrated nume
 
 Finally, the quantity integrated over the vortex region is
 \begin{align}
-  F & = c A + \sqrt{2\pi} a \sigma_\phi \sigma_r r_0 k \mathcal{C}_k                \\
-    & = \sigma_\phi \sigma_r r_0 \left( c\, k^2 \pi + a \, \sqrt{2\pi} \mathcal{C}_k \right)
+  F & = c A + \sqrt{2\pi} a \sigma_\phi \sigma_r r_0 \, \mathcal{C}_k                \\
+    & = \sigma_\phi \sigma_r r_0 \left( c\, k^2 \pi + a \, \sqrt{2\pi} \, \mathcal{C}_k \right)
 \end{align}
 
 Interestingly, in the case of the double bell curve, the stretching and pinching effects again appear to cancel each other.
