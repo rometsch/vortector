@@ -77,7 +77,7 @@ Thus the ellipse equation takes the form
 
 Without loss of generality, we can set $\phi_0 = 0$ by rotating the frame of reference.
 
-Note, that the $\phi$ direction does not carry a unit of length.
+Note that the $\phi$ direction does not carry a unit of length.
 The corresponding length is the distance on the arc at radius $r$.
 This needs to be accounted for during integration of quantities over the ellipse.
 
@@ -85,7 +85,7 @@ The area of the ellipse in the $r-\phi$ plane does not carry physical meaning.
 The physically relevant quantity is the area enclosed by the corresponding region in the disk.
 
 In the $r$ - $s$ plane, where $s$ is the length on an arc along the azimuthal direction,
-the ellipse in stretched for $r > r_0$ and pinched for $r < r_0$.
+the ellipse is stretched for $r > r_0$ and pinched for $r < r_0$.
 See the center panel of Fig.\,\ref{fig:geometries} for a sketch of this geometry.
 The bounding lines indicated with $\phi=\pi$ and $\phi=-\pi$ identify the same line in the right panel
 and represent a periodic boundary.
@@ -102,13 +102,13 @@ $\alpha(r) = h_\phi \sqrt{1 - \left(\frac{r-r_0}{h_r}\right)^2}$ is defined by E
 
 \begin{align}
   A & = \int_{Ellipse} \mathrm{d}A
-  = \int_{r_0 - h_r}^{r_0 + h_r} \int_{-\alpha(r)}^{\alpha(r)} r \mathrm{d}r \mathrm{d}\phi                \\
+  = \int_{r_0 - h_r}^{r_0 + h_r} \int_{-\alpha(r)}^{\alpha(r)} \mathrm{d}\phi\,  r \, \mathrm{d}r                 \\
     & = 2 h_\phi \int_{r_0 - h_r}^{r_0 + h_r} \mathrm{d}r \, r \sqrt{1 - \left(\frac{r-r_0}{h_r}\right)^2} \\
     & = 2 h_r^2 h_\phi \int_{-1}^1 \mathrm{d}x \left(x + \frac{r_0}{h_r}\right) \sqrt{1-x^2}
   = 2 h_\phi h_r^2 \left( I_1 + \frac{r}{h_r} I_2 \right)
 \end{align}
 
-The substitution $r - r_0 = h_r x$ was and the integral was split in two parts.
+The substitution $r - r_0 = h_r x$ was performed and the integral was split in two parts.
 The second integral disappears because the integrant is anti-symmetric, 
 $  I_2 = \int_{-1}^{1} \mathrm{d} x\, x \sqrt{1 - x^2} = 0$.
 
@@ -117,7 +117,7 @@ $I_1 = \int_{-1}^1 \mathrm{d} x \sqrt{1 - x^2} = \frac{\pi}{2}$.
 
 Finally, the area in the cartesian plane appears to be equivalent to the usual formula with the extent $a_s = r_0 h_\phi$,
 \begin{align}
-  A = \pi h_r h_\phi r_0
+  A = \pi \, h_r \, h_\phi \, r_0
 \end{align}
 
 A possible interpretation is that the stretching in the outer part is compensated by the pinching in the inner part.
@@ -145,9 +145,9 @@ The function is composed of two bell curves in radial and azimuthal direction as
 \end{align}
 
 Then the vortex can be defined as the region enclosed by an ellipse (in $r-\phi$)
-with the extent is defined by the full-width-half-maximum of the bell curve, i.e. $h_r = \sqrt{2 \log(2)} \sigma_r$
-and $h_\phi = \sqrt{2 \log(2)} \sigma_\phi$, or by some multiple of $\sigma_r$ and $\sigma_\phi$.
-In general, any ratio $k = \frac{h}{\sigma}$ can be chosen.
+with the extent is defined by the full width at half maximum of the bell curve, i.e. $h_r = \sqrt{2 \ln(2)} \,\sigma_r$
+and $h_\phi = \sqrt{2 \ln(2)} \, \sigma_\phi$, or by some multiple of $\sigma_r$ and $\sigma_\phi$.
+In general, any ratio $k = \frac{h_r}{\sigma_r} = \frac{h_\phi}{\sigma_\phi}$ can be chosen.
 
 Again, the physical relevant integrals need to be performed in the cartesian plane with limits defined by
 the ellipse in the $r-\phi$ plane.
@@ -156,7 +156,7 @@ We will first split off the contribution from the constant part of $f$ by reusin
 
 \begin{align}
   F & = \int_{Ellipse} f(r, \phi) \, \mathrm{d}A                                                
-    = \int_{r_0 - h_r}^{r_0 + h_r} \int_{-\alpha(r)}^{\alpha(r)} r \,\mathrm{d}r \, \mathrm{d}\phi \,f(r, \phi)
+    = \int_{r_0 - h_r}^{r_0 + h_r} \int_{-\alpha(r)}^{\alpha(r)} \mathrm{d}\phi \, r \,\mathrm{d}r \, f(r, \phi)
     = A \,c + J \,,
 \end{align}
 
@@ -182,7 +182,7 @@ Using this result and the substitution $r - r_0 = h_r x$,
   \mathrm{erf} \left( \frac{k}{\sqrt{2}} \sqrt{1 - x^2} \right)                                                                 \\
     & = \sqrt{2\pi} a \sigma_\phi \sigma_r r_0 k \int_{-1}^{1} \mathrm{d}x \exp\left( - \frac{k^2}{2} x^2\right)
   \mathrm{erf} \left( \frac{k}{\sqrt{2}} \sqrt{1 - x^2} \right)                                                                 \\
-    & = \sqrt{2\pi} a \sigma_\phi \sigma_r r_0 \mathcal{C}_k \,.
+    & = \sqrt{2\pi} a \sigma_\phi \sigma_r r_0 \, \mathcal{C}_k \,.
 \end{align}
 
 The second term in the integrant of the second line, resulting from multiplication of $h_r x$ with the two functions,
@@ -194,16 +194,16 @@ At this point, the integral only depends on constants and can be integrated nume
 Finally, the quantity integrated over the vortex region is
 \begin{align}
   F & = c A + \sqrt{2\pi} a \sigma_\phi \sigma_r r_0 k \mathcal{C}_k                \\
-    & = \sigma_\phi \sigma_r r_0 \left( c \pi + a \sqrt{2\pi} \mathcal{C}_k \right)
+    & = \sigma_\phi \sigma_r r_0 \left( c\, k^2 \pi + a \, \sqrt{2\pi} \mathcal{C}_k \right)
 \end{align}
 
 Interestingly, in the case of the double bell curve, the stretching and pinching effects again appear to cancel each other.
 An example for a quantity obtained in this way, the mass, $F=M$, of the vortex can be calculated from a fit to the
 surface density, $f_\Sigma(r, \phi)$.
 
-Some computed values for $k=1$, $k=\sqrt{2\log{2}}$ (corresponding to a vortex extent of one FWHM), and $k=2$ 
+Some computed values for $k=1$, $k=\sqrt{2\ln{2}}$ (corresponding to a vortex extent of one FWHM), and $k=2$ 
 are $\mathcal{C}_1 = 0.98628137356472$,
-$\mathcal{C}_{2\log(2)} = 1.25331413731550$, and $\mathcal{C}_2 = 2.16739302711$.
+$\mathcal{C}_{2\ln(2)} = 1.25331413731550$, and $\mathcal{C}_2 = 2.16739302711$.
 
 
 \end{document}
