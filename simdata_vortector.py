@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+import vortector
+import smurf
+import matplotlib.pyplot as plt
 import argparse
 import astropy
 import astropy.constants
@@ -9,9 +12,6 @@ import simdata
 
 import matplotlib as mpl
 mpl.use('qt5agg')
-import matplotlib.pyplot as plt
-
-import vortector
 
 
 def main():
@@ -26,17 +26,20 @@ def main():
     X, Y, Xc, Yc, A, vortensity, vorticity, Rho, Rho_background = calc_quantities(
         simulation, Noutput)
 
-    vd = vortector.Vortector(Xc, Yc, A, vortensity, Rho, Rho_background,
-                             [5.2, 15], verbose=False, med=0.15, mear=np.inf,
-                             levels=levels
-                             )
+    Rlims = [5.2, 12]
+    nl = np.argmin(np.abs(Xc[:,0]-Rlims[0]))
+    nr = np.argmin(np.abs(Xc[:,0]-Rlims[1]))
+    vd = vortector.Vortector(Xc[nl:nr,:], Yc[nl:nr,:], A[nl:nr,:], vortensity[nl:nr,:], Rho[nl:nr,:],
+                            verbose=False, med=0.15, mear=np.inf,
+                            levels=levels
+                            )
 
     vortices = vd.detect_vortex(include_mask=True)
     for v in vortices:
         v["strength"] = np.exp(-v["vortensity_median"])*v["mass"]
         print("strength = {:.2e}, mass = {:.2e} , min vort = {:.3f}".format(
             v['strength'], v['mass'], v['vortensity_min']))
-        try:    
+        try:
             print(
                 f"    contour diff 2D = {v['sigma_fit_contour_diff_2D']:.2e} , contour reldiff 2D = {v['sigma_fit_contour_reldiff_2D']:.2e}")
             print(
@@ -48,11 +51,16 @@ def main():
 
     # fig, axes = plt.subplots(3,2, figsize=(16,12), gridspec_kw={"height_ratios" : [1,1,2]})
     # axes = axes.ravel()
-    
+
     # vd.show_fit_overview_1D(0, axes=axes[:4])
     # vd.show_fit_overview_2D(axes=axes[4:])
     vd.show_fit_overview_2D()
+    fig = plt.gca().get_figure()
+
+    name = smurf.search.search(simid)[0]["name"]
+    fig.suptitle(f"{simid} | {name} | N = {Noutput}")
     plt.show()
+
 
 def parse_cli_args():
     parser = argparse.ArgumentParser()
@@ -61,6 +69,7 @@ def parse_cli_args():
     parser.add_argument("--rlim", type=float, nargs=2, help="Radial limits.")
     args = parser.parse_args()
     return args
+
 
 def calc_quantities(simulation, Noutput):
     M_star = 1*u.solMass
@@ -115,6 +124,7 @@ def calc_quantities(simulation, Noutput):
     Rho = np.roll(Rho, N_roll, axis=1)
     Rho_background = np.roll(Rho_background, N_roll, axis=1)
     return X, Y, Xc, Yc, A, vortensity, vorticity, Rho, Rho_background
+
 
 def map_angles(phi, phi_min=-np.pi):
     """ Map angles to the range [phi_min, phi_min + 2pi]
@@ -249,7 +259,7 @@ def velocity_cartesian_simdata(data, Noutput):
     vy = vrad_c*np.sin(PHI) + vazi_c*np.cos(PHI)
 
     return (x, y, vx, vy)
-    
+
 
 if __name__ == "__main__":
     main()
