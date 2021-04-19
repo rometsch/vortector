@@ -6,14 +6,13 @@ from scipy.optimize import curve_fit
 
 
 class Vortector:
-    def __init__(self, Xc, Yc, A, vortensity, Sigma, Sigma0,
+    def __init__(self, Xc, Yc, A, vortensity, Sigma,
                  Rlims, levels=[float(x) for x in np.arange(-1, 1.5, 0.05)],
                  med=0.15, mear=np.inf, mvd=0.01, verbose=False, azimuthal_boundaries=[-np.pi, np.pi]):
 
         self.vortensity = vortensity
 
         self.Sigma = Sigma
-        self.Sigma_background = Sigma0
 
         self.Rc = Xc
         self.Phic = Yc
@@ -250,12 +249,10 @@ class Vortector:
         self.Yc_view = self.Phic[self.vmi:self.vma, :]
         self.cell_area_view = self.cell_area[self.vmi:self.vma, :]
         self.Rho_view = self.Sigma[self.vmi:self.vma, :]
-        self.Rho_background_view = self.Sigma_background[self.vmi:self.vma, :]
         self.vortensity_view = self.vortensity[self.vmi:self.vma, :]
 
     def calc_cell_masses(self):
         self.mass_view = self.cell_area_view*self.Rho_view
-        self.mass_background_view = self.cell_area_view*self.Rho_background_view
 
     def generate_ancestors(self):
         # Generate ancestor list
@@ -1007,8 +1004,6 @@ class Vortector:
     def calc_vortex_mass(self, c):
         mask = c["mask_view"]
         c["mass"] = np.sum(self.mass_view[mask])
-        c["mass_background"] = np.sum(self.mass_background_view[mask])
-        c["mass_enhancement"] = c["mass"] - c["mass_background"]
 
     def calc_vortensity(self, c):
         mask = c["mask_view"]
@@ -1023,10 +1018,7 @@ class Vortector:
         c["sigma_median"] = np.median(self.Rho_view[mask])
         c["sigma_min"] = np.min(self.Rho_view[mask])
         c["sigma_max"] = np.max(self.Rho_view[mask])
-        c["sigma0_mean"] = np.mean(self.Rho_background_view[mask])
-        c["sigma0_median"] = np.median(self.Rho_background_view[mask])
-        c["sigma0_min"] = np.min(self.Rho_background_view[mask])
-        c["sigma0_max"] = np.max(self.Rho_background_view[mask])
+
 
     def calc_vortex_extent(self, c):
         mask = c["mask_view"]
@@ -1089,7 +1081,7 @@ class Vortector:
             if k >= n:
                 break
             try:
-                for v in ["mass_enhancement", "mass_background", "mass", "vortensity_min", "vortensity_median", "vortensity_mean", "vortensity_max"]:
+                for v in ["mass", "vortensity_min", "vortensity_median", "vortensity_mean", "vortensity_max"]:
                     print(v, vort[v])
                 strength = np.exp(-vort["vortensity_median"])*vort["mass"]
                 print("strength", strength)
