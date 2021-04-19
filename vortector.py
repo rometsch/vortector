@@ -512,103 +512,7 @@ class Vortector:
                "sigma_r": p[4], "sigma_phi": p[5], "popt": p}
         save_fit(vort, "vortensity", fit)
 
-    def fit_gaussians_direction_splitting(self, c):
-        try:
-            fit_vort_phi = self.fit_gaussian_phi(
-                c, "vortensity", ref="contour", fix_avg=True)
-            save_fit(c, "vortensity", "phi", fit_vort_phi)
-            fit_vort_r = self.fit_gaussian_r(c, "vortensity", ref="contour", fixed={
-                "y0": fit_vort_phi["popt"][0], "a": fit_vort_phi["popt"][1]})
-            save_fit(c, "vortensity", "r", fit_vort_r)
-
-            ref = "vortensity"
-            center = "vortensity"
-        except RuntimeError:
-            ref = "contour"
-            center = "contour"
-
-        ymax = c["sigma_max"]
-        yavg = c["sigma_mean"]
-
-        inds = self.select_center_inds(c, center)
-        mask_r, mask_phi = self.select_fit_region(c, ref)
-        y = self.Rho_view[inds[0], :]
-        y_outer = y[np.logical_not(mask_phi)]
-        ymax_outer = np.max(y_outer)
-        yavg_outer = np.average(y_outer)
-        ymin_outer = np.min(y_outer)
-
-        dy = ymax - yavg_outer
-
-        fit_phi = self.fit_gaussian_phi(
-            c, "sigma", autoweight=True,
-            ref=ref, center=center,
-            blow={"y0": 0.75*yavg_outer, "a": 0},
-            bup={"y0": 1.25*yavg_outer},
-            p0={"y0": yavg_outer, "a": dy}
-        )
-        save_fit(c, "sigma", "phi", fit_phi)
-
-        y0_phi = fit_phi["popt"][0]
-        a_phi = fit_phi["popt"][1]
-        fit_r = self.fit_gaussian_r(
-            c, "sigma", autoweight=True,
-            ref=ref, center=center,
-            blow={"y0": 0.75*yavg_outer, "a": 0},
-            bup={"y0": 1.25*yavg_outer},
-            p0={"y0": y0_phi, "a": a_phi},
-            fixed={"y0": y0_phi}
-        )
-        save_fit(c, "sigma", "r", fit_r)
-
-        for n in range(5):
-            popt = fit_phi["popt"]
-            lf = 0.9
-            uf = 1.1
-            fit_phi_new = self.fit_gaussian_phi(
-                c, "sigma", autoweight=True,
-                ref="vortensity", center="sigma",
-                blow={"y0": lf*popt[0], "a": lf*popt[1], "sigma": lf*popt[3]},
-                bup={"y0": uf*popt[0], "a": uf*popt[1], "sigma": uf*popt[3]},
-                p0={"y0": yavg_outer, "a": popt[1],
-                    "x0": popt[2], "sigma": popt[3]},
-                # fixed={"y0" : popt[0]}
-                # fixed = {"y0": popt[0], "a": popt[1],"sigma" : popt[3]},
-            )
-            if fit_phi_new["diff"] < fit_phi["diff"]:
-                if self.verbose:
-                    print(
-                        f"- fitting sigma to n = {c['n']}: accepted fit {n+2} in phi")
-                fit_phi = fit_phi_new
-                save_fit(c, "sigma", "phi", fit_phi)
-                fit_phi_stopped = False
-            else:
-                fit_phi_stopped = True
-
-            y0_phi = fit_phi["popt"][0]
-            a_phi = fit_phi["popt"][1]
-            fit_r_new = self.fit_gaussian_r(
-                c, "sigma", autoweight=True,
-                ref="sigma", center="sigma",
-                blow={"y0": 0.75*yavg_outer, "a": 0},
-                bup={"y0": 1.25*yavg_outer},
-                p0={"y0": y0_phi, "a": a_phi},
-                fixed={"y0": y0_phi, "a": a_phi})
-
-            if fit_r_new["diff"] < fit_r["diff"]:
-                if self.verbose:
-                    print(f"- fitting sigma: accepted fit {n+2} in r")
-                fit_r = fit_r_new
-                save_fit(c, "sigma", "r", fit_r)
-                fit_r_stopped = False
-            else:
-                fit_r_stopped = True
-
-            if fit_r_stopped and fit_phi_stopped:
-                if self.verbose:
-                    print(
-                        f"- fitting sigma to n = {c['n']}: finished after {n+2} attempt")
-                break
+    
 
     def calc_fit_difference_2D(self, c, varname="sigma"):
         """ Calculate the difference of the fit to the data.
@@ -1039,11 +943,11 @@ class Vortector:
         if ref == "contour":
             r0, phi0 = c["vortensity_min_pos"]
         elif ref == "vortensity":
-            r0 = c["vortensity_fit_r_x0"]
-            phi0 = c["vortensity_fit_phi_x0"]
+            r0 = c["vortensity_fit_2D_r0"]
+            phi0 = c["vortensity_fit_2D_phi0"]
         elif ref == "sigma":
-            r0 = c["sigma_fit_r_x0"]
-            phi0 = c["sigma_fit_phi_x0"]
+            r0 = c["sigma_fit_2D_r0"]
+            phi0 = c["sigma_fit_2D_phi0"]
         else:
             raise AttributeError(
                 f"'{ref}' is not a valid reference for fitting.")
@@ -1082,18 +986,18 @@ class Vortector:
             mask_r = mask[:, inds[1]]
             mask_phi = mask[inds[0], :]
         elif ref == "vortensity":
-            center = c["vortensity_fit_r_x0"]
-            hw = c["vortensity_fit_r_sigma"]
+            center = c["vortensity_fit_2D_r0"]
+            hw = c["vortensity_fit_2D_sigma_r"]
             mask_r = self.vortex_mask_r(center, hw)
-            center = c["vortensity_fit_phi_x0"]
-            hw = c = c["vortensity_fit_phi_sigma"]
+            center = c["vortensity_fit_2D_phi0"]
+            hw = c = c["vortensity_fit_2D_sigma_phi"]
             mask_phi = self.vortex_mask_phi(center, hw)
         elif ref == "sigma":
-            center = c["sigma_fit_r_x0"]
-            hw = c["sigma_fit_r_sigma"]
+            center = c["sigma_fit_2D_r0"]
+            hw = c["sigma_fit_2D_sigma_r"]
             mask_r = self.vortex_mask_r(center, hw)
-            center = c["sigma_fit_phi_x0"]
-            hw = c["sigma_fit_phi_sigma"]
+            center = c["sigma_fit_2D_r0"]
+            hw = c["sigma_fit_2D_sigma_phi"]
             mask_phi = self.vortex_mask_phi(center, hw)
         else:
             raise AttributeError(
@@ -1625,247 +1529,6 @@ def combine_periodic(x, y, m, bnd=(-np.pi, np.pi)):
         return xcom, ycom
     else:
         return x[m], y[m]
-
-
-def gauss(x, y0, a, x0, sigma):
-    """ A gaussian bell function.
-
-    Parameters
-    ----------
-    x: array
-        Coordinates
-    y0: float
-        Offset
-    a: float
-        Amplitute
-    x0: float
-        Center of the bell curve.
-    sigma : float
-        Standard deviation.
-
-    Returns
-    -------
-    array
-        Function values.  
-    """
-    return a * np.exp(-(x - x0)**2 / (2 * sigma**2)) + y0
-
-
-def gauss_jac(x, y0, a, x0, sigma):
-    d1 = np.ones(len(x))
-    d2 = np.exp(-(x - x0)**2 / (2 * sigma**2))
-    d3 = (x - x0) / (sigma**2) * a * np.exp(-(x - x0)**2 / (2 * sigma**2))
-    d4 = (x - x0)**2 / (sigma**3) * a * np.exp(-(x - x0)**2 / (2 * sigma**2))
-    return np.array([d1, d2, d3, d4]).transpose()
-
-
-def gauss_jac_fix_y0(x, y0, a, x0, sigma):
-    d2 = np.exp(-(x - x0)**2 / (2 * sigma**2))
-    d3 = (x - x0) / (sigma**2) * a * np.exp(-(x - x0)**2 / (2 * sigma**2))
-    d4 = (x - x0)**2 / (sigma**3) * a * np.exp(-(x - x0)**2 / (2 * sigma**2))
-    return np.array([d2, d3, d4]).transpose()
-
-
-def gauss_jac_fix_y0_a(x, y0, a, x0, sigma):
-    d3 = (x - x0) / (sigma**2) * a * np.exp(-(x - x0)**2 / (2 * sigma**2))
-    d4 = (x - x0)**2 / (sigma**3) * a * np.exp(-(x - x0)**2 / (2 * sigma**2))
-    return np.array([d3, d4]).transpose()
-
-
-def fit_gauss(x, y, y0=None, a=None, w=None, autoweight=True,
-              blow=[None]*4, bup=[None]*4):
-    """ Fit a gaussian to the data.
-
-    Parameters
-    ----------
-    x : array
-        Positions
-    y : array
-        Values
-    autoweight : bool
-        Perform two fits using deviations from first fit as weights.
-    y0 : float
-        Fixed value for offset.
-    a : float
-        Fixed value for amplitude.
-    w : array
-        Weights for the fit.
-
-    Returns
-    -------
-    popt : array
-        Optimal parameter
-    pcov : 2-D array
-        Estimated covariance of popt
-
-    """
-
-    blow_def = [-10*np.max(np.abs(y)), -10 *
-                np.max(np.abs(y)), x[0], (x[-1]-x[0])/10]
-    bup_def = [10*np.max(np.abs(y)), 10*np.max(np.abs(y)),
-               x[-1], 10*(x[-1]-x[0])]
-
-    blow_def = [-np.inf]*4
-    bup_def = [np.inf]*4
-
-    blow = [v if v is not None else d for v, d in zip(blow, blow_def)]
-    bup = [v if v is not None else d for v, d in zip(bup, bup_def)]
-
-    mean = sum(x * y) / sum(y)
-    sigma = np.sqrt(sum(y * (x - mean)**2) / sum(y))
-
-    if y0 is not None and a is not None:
-        def f(x, x0, sig): return gauss(x, y0, a, x0, sig)
-        p0 = [mean, sigma]
-        blow = blow[2:]
-        bup = bup[2:]
-        popt, pcov = curve_fit(f, x, y, p0=p0, bounds=(blow, bup), sigma=w)
-        popt = [y0, a, popt[0], popt[1]]
-    elif y0 is not None:
-        def f(x, a, x0, sig): return gauss(x, y0, a, x0, sig)
-        p0 = [np.average(y), mean, sigma]
-        blow = blow[1:]
-        bup = bup[1:]
-        popt, pcov = curve_fit(f, x, y, p0=p0, bounds=(blow, bup), sigma=w)
-        popt = [y0, popt[0], popt[1], popt[2]]
-    else:
-        f = gauss
-        p0 = [np.average(y), y[int(len(y)/2)], mean, sigma]
-        popt, pcov = curve_fit(f, x, y, p0=p0, bounds=(blow, bup), sigma=w)
-
-    if autoweight:
-        return fit_gauss(x, y, y0=y0, a=a, w=w, autoweight=False)
-
-    print("r0 min/max/fit =", blow[-2], bup[-2], popt[-2])
-    print("sigma min/max/fit =", blow[-1], bup[-1], popt[-1])
-    return popt, pcov
-
-
-class GaussFitter:
-    def __init__(self, x, y, name="", weights=None, autoweight=True, blow=None, bup=None, p0=None, fixed=None, verbose=False):
-        self.x = x
-        self.y = y
-        self.autoweight = autoweight
-        self.weights = weights
-        self.name = name
-        self.verbose = verbose
-
-        self.parameters = ["y0", "a", "x0", "sigma"]
-
-        self.blow = {key: -np.inf for key in self.parameters}
-        self.bup = {key: np.inf for key in self.parameters}
-
-        self.blow["sigma"] = 0
-        dx = np.max(x) - np.min(x)
-        self.blow["x0"] = np.min(x)
-        self.bup["x0"] = np.max(x)
-
-        if blow is not None:
-            for key, val in blow.items():
-                self.set_lower_bound(key, val)
-        if bup is not None:
-            for key, val in bup.items():
-                self.set_upper_bound(key, val)
-
-        self.fixed = fixed if fixed is not None else {}
-        self.p0 = p0 if p0 is not None else {}
-
-    def set_lower_bound(self, key, value):
-        if not key in self.parameters:
-            raise KeyError(f"{key} is not a member of the lower bounds dict.")
-        self.blow[key] = value
-
-    def set_upper_bound(self, key, value):
-        if not key in self.parameters:
-            raise KeyError(f"{key} is not a member of the upper bounds dict.")
-        self.bup[key] = value
-
-    def set_fixed(self, key, value):
-        if not key in self.parameters:
-            raise KeyError(f"{key} is not a valid parameter.")
-        self.fixed[key] = value
-
-    def fit(self):
-        popt, pcov = self.fit_single()
-
-        if self.weights is None and self.autoweight:
-            peak_value = popt[0] + popt[1]  # y0 + a
-            self.calc_weights(peak_value)
-            self.p0 = {k: v for k, v in zip(self.parameters, popt)}
-            popt, pcov = self.fit_single()
-
-        return popt, pcov
-
-    def calc_weights(self, peak_value):
-        difference = np.abs(self.y - peak_value)
-        self.weights = np.exp(-difference/np.max(difference))
-
-    def fit_single(self):
-        x = self.x
-        y = self.y
-        fixed = self.fixed
-        weights = self.weights
-        lower = [self.blow[key] for key in self.parameters]
-        upper = [self.bup[key] for key in self.parameters]
-
-        mean = sum(x * y) / sum(y)
-        sigma = np.sqrt(sum(y * (x - mean)**2) / sum(y))
-
-        p0 = {
-            "y0": np.average(y),
-            "a": y[int(len(y)/2)] - np.average(y),
-            "x0": mean,
-            "sigma": sigma
-        }
-        for k, v in self.p0.items():
-            p0[k] = v
-
-        for key, v in p0.items():
-            if v <= self.blow[key] or v >= self.bup[key]:
-                p0[key] = 0.5*(self.blow[key] + self.bup[key])
-
-        if "y0" in fixed and "a" in fixed:
-            def f(x, x0, sig):
-                return gauss(x, fixed["y0"], fixed["a"], x0, sig)
-
-            def jac(x, x0, sig):
-                return gauss_jac_fix_y0_a(x, fixed["y0"], fixed["a"], x0, sig)
-            p0_vec = [p0[k] for k in ["x0", "sigma"]]
-            bounds = (lower[2:], upper[2:])
-            popt, pcov = curve_fit(
-                f, x, y, p0=p0_vec, bounds=bounds, sigma=weights, jac=jac)
-            popt = [fixed["y0"], fixed["a"], popt[0], popt[1]]
-        elif "y0" in fixed:
-            def f(x, a, x0, sig):
-                return gauss(x, fixed["y0"], a, x0, sig)
-
-            def jac(x, a, x0, sig):
-                return gauss_jac_fix_y0(x, fixed["y0"], a, x0, sig)
-            p0_vec = [p0[k] for k in ["a", "x0", "sigma"]]
-            bounds = (lower[1:], upper[1:])
-            popt, pcov = curve_fit(
-                f, x, y, p0=p0_vec, bounds=bounds, sigma=weights, jac=jac)
-            popt = [fixed["y0"], popt[0], popt[1], popt[2]]
-        else:
-            f = gauss
-            jac = gauss_jac
-            p0_vec = [p0[k] for k in ["y0", "a", "x0", "sigma"]]
-            bounds = (lower, upper)
-            popt, pcov = curve_fit(
-                f, x, y, p0=p0_vec, bounds=bounds, sigma=weights, jac=jac)
-
-        if self.verbose:
-            print("-------------------")
-            print(f"- fitting gaussian to {self.name}")
-            for n, key in enumerate(self.parameters):
-                if key in fixed:
-                    print(f"- {key:6s} = {self.fixed[key]:+.3e} fixed")
-                else:
-                    print(
-                        f"- {key:6s} = {popt[n]:+.3e} <- {p0[key]:+.3e} ,[{self.blow[key]:+.3e},{self.bup[key]:+.3e}]")
-            print("-------------------")
-
-        return popt, pcov
 
 
 def save_fit(c, varname, fit, axis=None, parameters=["y0", "a", "x0", "sigma"]):
