@@ -7,7 +7,7 @@ from scipy.optimize import curve_fit
 
 class Vortector:
     def __init__(self, Xc, Yc, A, vortensity, Sigma,
-                 Rlims, levels=[float(x) for x in np.arange(-1, 1.5, 0.05)],
+                 levels=[float(x) for x in np.arange(-1, 1.5, 0.05)],
                  med=0.15, mear=np.inf, mvd=0.01, verbose=False, azimuthal_boundaries=[-np.pi, np.pi]):
 
         self.vortensity = vortensity
@@ -15,13 +15,14 @@ class Vortector:
         self.Sigma = Sigma
 
         self.Rc = Xc
+        self.Xc = Xc
         self.Phic = Yc
+        self.Yc = Yc
         self.cell_area = A
 
         self.azimuthal_boundaries = azimuthal_boundaries
 
         # Parameters
-        self.Rlims = Rlims
         self.levels = levels
         self.max_ellipse_deviation = med
         self.max_ellipse_aspect_ratio = mear
@@ -31,8 +32,8 @@ class Vortector:
 
     def contour_image_dimensions(self):
 
-        data_view = self.vortensity[self.vmi:self.vma, :]
-        self.Nx, self.Ny = data_view.shape
+        vortensity = self.vortensity
+        self.Nx, self.Ny = vortensity.shape
         self.int_aspect = int(np.max([self.Nx/self.Ny, self.Ny/self.Nx]))
 
         if self.int_aspect >= 2:
@@ -66,7 +67,7 @@ class Vortector:
         fig.add_axes(ax)
 
         # periodically extend vortensity
-        vort = self.vortensity[self.vmi:self.vma, :]
+        vort = self.vortensity
         Hhalf = int(vort.shape[1]/2)
         vort_pe = np.concatenate(
             [vort[:, Hhalf:],
@@ -199,7 +200,7 @@ class Vortector:
             contour["mask_extended"] = im_shape
             self.candidates[contour["n"]] = contour
 
-    def create_vortex_mask_in_view(self):
+    def create_vortex_mask(self):
         # Transform the image from ellipse fitting images back to match the grid
 
         for contour in self.candidates.values():
@@ -221,7 +222,7 @@ class Vortector:
                 else:
                     mask = mask[:, ::self.int_aspect]
             mask = np.array(mask, dtype=bool)
-            contour["mask_view"] = mask
+            contour["mask"] = mask
 
             # map the bounding points to view and data shape
             for key in ["bottom", "top", "left", "right"]:
@@ -236,23 +237,15 @@ class Vortector:
                     y /= self.int_aspect
                 x = int(x)
                 y = int(y)
-                contour[key + "_view"] = (x, y)
-                contour[key] = (x + self.vmi, y)
+                contour[key] = (x, y)
 
         if self.verbose:
             print(
                 f"Mapping mask: mask.shape = {mask.shape}, mask_orig.shape {mask_orig.shape}")
 
-    def create_array_views(self):
-        """ Create arrays that match the extend defined by Rlims which matches the contour image. """
-        self.Xc_view = self.Rc[self.vmi:self.vma, :]
-        self.Yc_view = self.Phic[self.vmi:self.vma, :]
-        self.cell_area_view = self.cell_area[self.vmi:self.vma, :]
-        self.Rho_view = self.Sigma[self.vmi:self.vma, :]
-        self.vortensity_view = self.vortensity[self.vmi:self.vma, :]
 
     def calc_cell_masses(self):
-        self.mass_view = self.cell_area_view*self.Rho_view
+        self.mass = self.cell_area*self.Sigma
 
     def generate_ancestors(self):
         # Generate ancestor list
@@ -381,29 +374,29 @@ class Vortector:
         inds = vort["vortensity_min_inds"]
 
         def get_pos(inds):
-            r = self.Xc_view[inds]
-            phi = self.Yc_view[inds]
+            r = self.Xc[inds]
+            phi = self.Yc[inds]
             return (r, phi)
 
-        top = get_pos(vort["top_view"])
-        left = get_pos(vort["left_view"])
-        right = get_pos(vort["right_view"])
-        bottom = get_pos(vort["bottom_view"])
+        top = get_pos(vort["top"])
+        left = get_pos(vort["left"])
+        right = get_pos(vort["right"])
+        bottom = get_pos(vort["bottom"])
 
-        mask = vort["mask_view"]
+        mask = vort["mask"]
         mask_r = mask[:, inds[1]]
         mask_phi = mask[inds[0], :]
 
-        vals = self.Rho_view
-        R = self.Xc_view[mask]
-        PHI = self.Yc_view[mask]
+        vals = self.Sigma
+        R = self.Xc[mask]
+        PHI = self.Yc[mask]
 
         Z = vals[mask]
         Z_r = vals[:, inds[1]]
         Z_phi = vals[inds[0], :]
 
-        r0 = self.Xc_view[inds]
-        phi0 = self.Yc_view[inds]
+        r0 = self.Xc[inds]
+        phi0 = self.Yc[inds]
 
         c_ref = np.average(Z_phi[np.logical_not(mask_phi)])
 
@@ -464,15 +457,15 @@ class Vortector:
         # for name, val, guess, low, up in zip(fitter.parameters, popt_rho, fitter.p0.values(), fitter.blow.values(), fitter.bup.values()):
         #     print(f"{name:5s} {val: .2e} ({guess: .2e}) [{low: .2e}, {up: .2e}]")
 
-        vals = self.vortensity_view
-        R = self.Xc_view[mask]
-        PHI = self.Yc_view[mask]
+        vals = self.vortensity
+        R = self.Xc[mask]
+        PHI = self.Yc[mask]
         Z = vals[mask]
         Z_r = vals[:, inds[1]]
         Z_phi = vals[inds[0], :]
 
-        r0 = self.Xc_view[inds]
-        phi0 = self.Yc_view[inds]
+        r0 = self.Xc[inds]
+        phi0 = self.Yc[inds]
 
         if bottom[1] > top[1]:
             Z_up = Z[mask_up]
@@ -522,20 +515,20 @@ class Vortector:
             return gauss2D((r, phi), *popt)
 
         if varname == "sigma":
-            vals = self.Rho_view
+            vals = self.Sigma
         elif varname == "vortensity":
-            vals = self.vortensity_view
+            vals = self.vortensity
         else:
             raise AttributeError(
                 f"Can't calculate fit difference in 2D for '{varname}'!")
 
-        R = self.Xc_view
-        PHI = self.Yc_view
+        R = self.Xc
+        PHI = self.Yc
 
-        mc = c["mask_view"]
+        mc = c["mask"]
         me = ((R-r0)/sigma_r)**2 + ((PHI-phi0)/sigma_phi)**2 <= 1
 
-        Ae = np.sum(self.cell_area_view[me])
+        Ae = np.sum(self.cell_area[me])
         Ac = c["area"]
         c[f"{varname}_fit_2D_ellipse_area_numerical"] = Ae
         c[f"{varname}_fit_2D_area_ratio_ellipse_to_contour"] = Ae/Ac
@@ -582,11 +575,11 @@ class Vortector:
             Data array.
         """
         if key == "vortensity":
-            return self.vortensity_view
+            return self.vortensity
         elif key == "sigma":
-            return self.Rho_view
+            return self.Sigma
         elif key == "vorticity":
-            return self.vortensity_view
+            return self.vortensity
         else:
             raise AttributeError(
                 f"'{key}' is not a valid choice for a fit quantity.")
@@ -607,7 +600,7 @@ class Vortector:
             Mask indicating the vortex region.
         """
         wf = 1.5
-        r = self.Xc_view[:, 0]
+        r = self.Xc[:, 0]
         mask = np.zeros(len(r), dtype=bool)
         cind = np.argmin(np.abs(r - c))
         lr = c - wf*hw
@@ -647,7 +640,7 @@ class Vortector:
             mask = mask_r
 
             y = vals[:, inds[1]]
-            x = self.Xc_view[:, 0]
+            x = self.Xc[:, 0]
 
             ax.plot(x, y, label=f"data slice n={c['n']}")
             ax.plot(x[mask], y[mask], label="vortex region")
@@ -699,7 +692,7 @@ class Vortector:
             mask = mask_phi
 
             y = vals[inds[0], :]
-            x = self.Yc_view[0, :]
+            x = self.Yc[0, :]
 
             ax.plot(x, y, label=f"data slice n={c['n']}")
             plot_periodic(ax, x, y, mask, label="vortex region")
@@ -756,7 +749,7 @@ class Vortector:
             Mask indicating the vortex region.
         """
         wf = 1.5
-        phi = self.Yc_view[0, :]
+        phi = self.Yc[0, :]
         mask = np.zeros(len(phi), dtype=bool)
         cind = np.argmin(np.abs(phi - c))
         lphi = self.clamp_periodic(c - wf*hw)
@@ -803,8 +796,8 @@ class Vortector:
         else:
             raise AttributeError(
                 f"'{ref}' is not a valid reference for fitting.")
-        rind = position_index(self.Xc_view[:, 0], r0)
-        phiind = position_index(self.Yc_view[0, :], phi0)
+        rind = position_index(self.Xc[:, 0], r0)
+        phiind = position_index(self.Yc[0, :], phi0)
         inds = (rind, phiind)
         return inds
 
@@ -834,7 +827,7 @@ class Vortector:
         """
         inds = self.select_center_inds(c, ref)
         if ref == "contour":
-            mask = c["mask_view"]
+            mask = c["mask"]
             mask_r = mask[:, inds[1]]
             mask_phi = mask[inds[0], :]
         elif ref == "vortensity":
@@ -857,51 +850,51 @@ class Vortector:
         return mask_r, mask_phi
 
     def calc_vortex_mass(self, c):
-        mask = c["mask_view"]
-        c["mass"] = np.sum(self.mass_view[mask])
+        mask = c["mask"]
+        c["mass"] = np.sum(self.mass[mask])
 
     def calc_vortensity(self, c):
-        mask = c["mask_view"]
-        c["vortensity_mean"] = np.mean(self.vortensity_view[mask])
-        c["vortensity_median"] = np.median(self.vortensity_view[mask])
-        c["vortensity_min"] = np.min(self.vortensity_view[mask])
-        c["vortensity_max"] = np.max(self.vortensity_view[mask])
+        mask = c["mask"]
+        c["vortensity_mean"] = np.mean(self.vortensity[mask])
+        c["vortensity_median"] = np.median(self.vortensity[mask])
+        c["vortensity_min"] = np.min(self.vortensity[mask])
+        c["vortensity_max"] = np.max(self.vortensity[mask])
 
     def calc_sigma(self, c):
-        mask = c["mask_view"]
-        c["sigma_mean"] = np.mean(self.Rho_view[mask])
-        c["sigma_median"] = np.median(self.Rho_view[mask])
-        c["sigma_min"] = np.min(self.Rho_view[mask])
-        c["sigma_max"] = np.max(self.Rho_view[mask])
+        mask = c["mask"]
+        c["sigma_mean"] = np.mean(self.Sigma[mask])
+        c["sigma_median"] = np.median(self.Sigma[mask])
+        c["sigma_min"] = np.min(self.Sigma[mask])
+        c["sigma_max"] = np.max(self.Sigma[mask])
 
 
     def calc_vortex_extent(self, c):
-        mask = c["mask_view"]
-        c["area"] = np.sum(self.cell_area_view[mask])
-        c["rmax"] = self.Xc_view[c["left_view"]]
-        c["rmin"] = self.Xc_view[c["right_view"]]
-        c["phimin"] = self.Yc_view[c["top_view"]]
-        c["phimax"] = self.Yc_view[c["bottom_view"]]
+        mask = c["mask"]
+        c["area"] = np.sum(self.cell_area[mask])
+        c["rmax"] = self.Xc[c["left"]]
+        c["rmin"] = self.Xc[c["right"]]
+        c["phimin"] = self.Yc[c["top"]]
+        c["phimax"] = self.Yc[c["bottom"]]
         if c["phimax"] < c["phimin"]:
             c["height"] = c["phimax"] + 2*np.pi - c["phimin"]
         else:
             c["height"] = c["phimax"] - c["phimin"]
 
     def calc_vortensity_flux(self, c):
-        mask = c["mask_view"]
-        A = self.cell_area_view
-        c["vortensity_flux"] = np.sum((A*self.vortensity_view)[mask])
+        mask = c["mask"]
+        A = self.cell_area
+        c["vortensity_flux"] = np.sum((A*self.vortensity)[mask])
         c["vortensity_exp_flux"] = np.sum(
-            (A*np.exp(-self.vortensity_view))[mask])
+            (A*np.exp(-self.vortensity))[mask])
 
     def find_vortensity_min_position(self, contour):
         # Calculate the position of minimum vortensity
-        mask = np.logical_not(contour["mask_view"])
+        mask = np.logical_not(contour["mask"])
         ind = np.argmin(np.ma.masked_array(
-            self.vortensity_view, mask=mask), axis=None)
+            self.vortensity, mask=mask), axis=None)
         inds = np.unravel_index(ind, mask.shape)
-        x = self.Xc_view[inds]
-        y = self.Yc_view[inds]
+        x = self.Xc[inds]
+        y = self.Yc[inds]
         contour["vortensity_min_pos"] = (x, y)
         contour["vortensity_min_inds"] = inds
         if self.verbose:
@@ -909,12 +902,12 @@ class Vortector:
 
     def find_density_max_position(self, contour):
         # Calculate the position of maximum density
-        mask = np.logical_not(contour["mask_view"])
+        mask = np.logical_not(contour["mask"])
         ind = np.argmax(np.ma.masked_array(
-            self.Rho_view, mask=mask), axis=None)
+            self.Sigma, mask=mask), axis=None)
         inds = np.unravel_index(ind, mask.shape)
-        x = self.Xc_view[inds]
-        y = self.Yc_view[inds]
+        x = self.Xc[inds]
+        y = self.Yc[inds]
         contour["sigma_max_pos"] = (x, y)
         contour["sigma_max_inds"] = inds
         if self.verbose:
@@ -944,46 +937,15 @@ class Vortector:
                 pass
             print()
 
-    def construct_global_mask(self, v):
-        """ Construct a mask array indicating the vortex with True.
-
-        This mask fits the initial dimensions of the data arrays.
-        """
-        mask = v["mask_view"]
-        gmask = np.concatenate(
-            [np.zeros((self.vmi, mask.shape[1]), dtype=bool),
-             mask,
-             np.zeros((self.Rc.shape[0]-self.vma, mask.shape[1]), dtype=bool)],
-            axis=0)
-
-        return gmask
-
-    def map_indices_to_global(self):
-        """ Update the indices of min/max location for use with original array size. """
-        for c in self.candidates.values():
-            for key in ["vortensity_min_inds", "sigma_max_inds"]:
-                ix = c[key][0] + self.vmi
-                iy = c[key][0]
-                c[key] = (ix, iy)
-
     def detect_vortex(self, include_mask=False, keep_internals=False):
-
-        # Range of indices for view
-        self.vmi = np.argmin(self.Rc[:, 0] < self.Rlims[0])
-        self.vma = np.argmin(self.Rc[:, 0] < self.Rlims[1])
-
-        if self.verbose:
-            print(
-                f"Radial index boundary for xlims: vmi = {self.vmi}, vma = {self.vma}")
 
         self.contour_image_dimensions()
         self.contour_image()
         self.find_contours()
         self.extract_closed_contours()
         self.extract_ellipse_contours()
-        self.create_vortex_mask_in_view()
+        self.create_vortex_mask()
 
-        self.create_array_views()
         self.calc_cell_masses()
 
         self.generate_ancestors()
@@ -993,8 +955,6 @@ class Vortector:
         self.calculate_vortex_properties()
         self.remove_non_vortex_candidates()
         self.remove_duplicates_by_min_vort_pos()
-
-        self.map_indices_to_global()
 
         self.sort_vortices_by_mass()
 
@@ -1021,10 +981,8 @@ class Vortector:
                             "bounding_vert", "area", "arcLength",
                             "ancestors", "decendents"]:
                     del c[key]
-            if include_mask:
-                c["mask"] = self.construct_global_mask(c)
-            else:
-                del c["mask_view"]
+            if not include_mask:
+                del c["mask"]
             self.vortices.append(c)
 
     def show_fit_overview_1D(self, n, axes=None):
@@ -1155,8 +1113,8 @@ class Vortector:
                                     bnd_pnts=True, show_fits=True, fit_contours=True,
                                     cbar_axes=None):
         import matplotlib.patheffects as pe
-        Xc = self.Xc_view
-        Yc = self.Yc_view
+        Xc = self.Xc
+        Yc = self.Yc
 
         contour_colors = "darkgray"
         contour_lw = 0.5
@@ -1165,7 +1123,7 @@ class Vortector:
 
             levels = self.levels
 
-            Z = self.vortensity_view
+            Z = self.vortensity
             cmap = "magma"
             norm = colors.Normalize(vmin=levels[0], vmax=levels[-1])
             img = ax.pcolormesh(
@@ -1177,7 +1135,7 @@ class Vortector:
         elif varname == "sigma":
             label = r"$\Sigma$"
 
-            Z = self.Rho_view
+            Z = self.Sigma
             cmap = "magma"
 
             try:
@@ -1202,7 +1160,7 @@ class Vortector:
         vortices = [main_vortex] + [v for v in self.vortices if v != main_vortex]
 
         for n, vort in enumerate(vortices):
-            ax.contour(Xc, Yc, vort["mask_view"], levels=[
+            ax.contour(Xc, Yc, vort["mask"], levels=[
                 0, 1, 2], linewidths=1, colors="white")
             x, y = vort["vortensity_min_pos"]
             if not show_fits:
@@ -1215,7 +1173,7 @@ class Vortector:
                     ax.axhline(vort[key])
 
             if bnd_pnts:
-                for key in ["top_view", "bottom_view", "left_view", "right_view"]:
+                for key in ["top", "bottom", "left", "right"]:
                     x = Xc[vort[key]]
                     y = Yc[vort[key]]
                     ax.plot([x], [y], "x")
@@ -1586,7 +1544,51 @@ def plot_ellipse_periodic(ax, x, y, w, h, crosshair=False, bnd=(-np.pi, np.pi), 
             ax, x, y, h/2, **line_args)
 
 
+def gauss(x, c, a, x0, sigma):
+    """ A gaussian bell function.
+    Parameters
+    ----------
+    x: array
+        Coordinates
+    c: float
+        Offset
+    a: float
+        Amplitute
+    x0: float
+        Center of the bell curve.
+    sigma : float
+        Standard deviation.
+    Returns
+    -------
+    array
+        Function values.  
+    """
+    return a * np.exp(-(x - x0)**2 / (2 * sigma**2)) + c
+
+
 def gauss2D(v, c, a, x0, y0, sx, sy):
+    """ A 2D version of the gaussian bell function.
+    Parameters
+    ----------
+    v: tuple of two array
+        x and y coordinates
+    c: float
+        Offset
+    a: float
+        Amplitute
+    x0: float
+        Center in x.
+    y0: float
+        Center in y.
+    sx : float
+        Standard deviation in x.
+    sy : float
+        Standard deviation in y.
+    Returns
+    -------
+    array
+        Function values.  
+    """
     x, y = v
     ex = np.exp(-(x - x0)**2 / (2 * sx**2))
     ey = np.exp(-(y - y0)**2 / (2 * sy**2))
