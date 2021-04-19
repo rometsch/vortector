@@ -1350,7 +1350,11 @@ class Vortector:
             raise ValueError(
                 f"{varname} not supported. Only 'vortensity' and 'sigma'.")
 
-        for n, vort in enumerate(self.vortices):
+        main_vortex = choose_main_vortex(self.vortices)
+
+        vortices = [main_vortex] + [v for v in self.vortices if v != main_vortex]
+
+        for n, vort in enumerate(vortices):
             ax.contour(Xc, Yc, vort["mask_view"], levels=[
                 0, 1, 2], linewidths=1, colors="white")
             x, y = vort["vortensity_min_pos"]
@@ -1483,6 +1487,32 @@ def position_index(x, x0):
     """
     return int(np.argmin(np.abs(x-x0)))
 
+
+
+def choose_main_vortex(vortices):
+    """ Choose a vortex from a list of candidates. """
+    if len(vortices) == 0:
+        return dict({})
+    if len(vortices) == 1:
+        return vortices[0]
+
+    large_vortices = [vortices[0]]
+    ref_mass = vortices[0]["mass"]
+    # keep vortices that have 20% of most massive's mass
+    for vortex in vortices[1:]:
+        if vortex["mass"] > ref_mass/5:
+            large_vortices.append(vortex)
+    
+    vortices_with_fit = []
+    for vortex in large_vortices:
+        if "sigma_fit_2D_c" in vortex:
+            vortices_with_fit.append(vortex)
+    
+    if len(vortices_with_fit) > 0:
+        return vortices_with_fit[0]
+    
+    sorted_vortices = sorted(large_vortices, key=lambda x : x["vortensity_min"])
+    return sorted_vortices[0]
 
 def combine_periodic(x, y, m, bnd=(-np.pi, np.pi)):
     """ Combine an array split at a periodic boundary. 
