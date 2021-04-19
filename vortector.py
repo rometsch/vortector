@@ -446,10 +446,10 @@ class Vortector:
                                blow={"c": 0.75*c_ref, "a": 0.75*a_guess,
                                      "x0": r0-0.25*dr, "y0": phi0-0.25*dphi},
                                bup={"c": 1.25*c_ref, "a": 1.25*a_guess, "x0": r0+0.25*dr, "y0": phi0+0.25*dphi})
-        p, _ = fitter.fit()
+        p, cov = fitter.fit()
 
         fit = {"c": p[0], "a": p[1], "r0": p[2], "phi0": p[3],
-               "sigma_r": p[4], "sigma_phi": p[5], "popt": p}
+               "sigma_r": p[4], "sigma_phi": p[5], "popt": p, "pcov" : cov}
         save_fit(vort, "sigma", fit)
 
         # print("Sigma fit parameters")
@@ -483,10 +483,10 @@ class Vortector:
                                    "c": c_ref, "a": a_guess},
                                blow={"c": 0.75*c_ref, "a": 1.25*a_guess},
                                bup={"c": 1.25*c_ref, "a": 0.75*a_guess})
-        p, _ = fitter.fit()
+        p, cov = fitter.fit()
 
         fit = {"c": p[0], "a": p[1], "r0": p[2], "phi0": p[3],
-               "sigma_r": p[4], "sigma_phi": p[5], "popt": p}
+               "sigma_r": p[4], "sigma_phi": p[5], "popt": p, "pcov" : cov}
         save_fit(vort, "vortensity", fit)
 
     def calc_fit_difference_2D(self, c, varname="sigma"):
@@ -521,9 +521,11 @@ class Vortector:
 
         R = self.Xc
         PHI = self.Yc
+        hr = sigma_r*np.sqrt(2*np.log(2))
+        hphi = sigma_phi*np.sqrt(2*np.log(2))
 
         mc = c["mask"]
-        me = ((R-r0)/sigma_r)**2 + ((PHI-phi0)/sigma_phi)**2 <= 1
+        me = ((R-r0)/hr)**2 + ((PHI-phi0)/hphi)**2 <= 1
 
         Ae = np.sum(self.cell_area[me])
         Ac = c["area"]
@@ -667,6 +669,7 @@ class Vortector:
             if not keep_internals:
                 for key in ["contour", "mask_extended", "bounding_hor",
                             "bounding_vert", "pixel_arcLength", "pixel_area",
+                            "top_extended", "left_extended", "bottom_extended", "right_extended",
                             "ancestors", "decendents"]:
                     del c[key]
             if not include_mask:
@@ -1020,7 +1023,7 @@ class Vortector:
             y = vals[:, inds[1]]
             x = self.Xc[:, 0]
 
-            ax.plot(x, y, label=f"data slice n={c['n']}")
+            ax.plot(x, y, label=f"data slice n={n}")
             ax.plot(x[mask], y[mask], label="vortex region")
 
             y0 = c[key + "_fit_2D_c"]
@@ -1072,7 +1075,7 @@ class Vortector:
             y = vals[inds[0], :]
             x = self.Yc[0, :]
 
-            ax.plot(x, y, label=f"data slice n={c['n']}")
+            ax.plot(x, y, label=f"data slice n={n}")
             plot_periodic(ax, x, y, mask, label="vortex region")
             y0 = c[key + "_fit_2D_c"]
             x0 = c[key + "_fit_2D_phi0"]
@@ -1352,16 +1355,8 @@ def save_fit(c, varname, fit, axis=None, parameters=["y0", "a", "x0", "sigma"]):
     fit : dict
         Dict containing popt vector and aux info.
     """
-    if axis is None:
-        for key, val in fit.items():
-            c[f"{varname}_fit_2D_{key}"] = val
-        return
-    pre = f"{varname}_fit_{axis}"
-    if "popt" in fit:
-        for n, param in enumerate(parameters):
-            c[f"{pre}_{param}"] = fit["popt"][n]
     for key, val in fit.items():
-        c[f"{pre}_{key}"] = fit[key]
+        c[f"{varname}_fit_2D_{key}"] = val
 
 
 def plot_periodic_mask(ax, x, y, m, **kwargs):
