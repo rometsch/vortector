@@ -243,7 +243,6 @@ class Vortector:
             print(
                 f"Mapping mask: mask.shape = {mask.shape}, mask_orig.shape {mask_orig.shape}")
 
-
     def calc_cell_masses(self):
         self.mass = self.cell_area*self.Sigma
 
@@ -490,8 +489,6 @@ class Vortector:
                "sigma_r": p[4], "sigma_phi": p[5], "popt": p}
         save_fit(vort, "vortensity", fit)
 
-    
-
     def calc_fit_difference_2D(self, c, varname="sigma"):
         """ Calculate the difference of the fit to the data.
 
@@ -542,7 +539,6 @@ class Vortector:
             c[f"{varname}_fit_2D_{region}_reldiff"] = reldiff
             c[f"{varname}_fit_2D_{region}_mass"] = np.sum(numvals*area)
             c[f"{varname}_fit_2D_{region}_mass_fit"] = np.sum(fitvals*area)
-
 
     def clamp_periodic(self, x):
         """ Make sure a periodic quantity is inside the domain.
@@ -867,7 +863,6 @@ class Vortector:
         c["sigma_min"] = np.min(self.Sigma[mask])
         c["sigma_max"] = np.max(self.Sigma[mask])
 
-
     def calc_vortex_extent(self, c):
         mask = c["mask"]
         c["area"] = np.sum(self.cell_area[mask])
@@ -1034,8 +1029,8 @@ class Vortector:
                                          bnd_lines=bnd_lines, bnd_pnts=bnd_pnts,
                                          show_fits=show_fits, fit_contours=fit_contours,
                                          cbar_axes=[axes[1, 0], axes[1, 1]])
-        
-        ax = axes[0,0]
+
+        ax = axes[0, 0]
         self.show_radial_fit(ax, "vortensity", 0, ref="contour")
         ax.set_ylim(-0.5, 1)
         ax.set_xticklabels([])
@@ -1088,7 +1083,6 @@ class Vortector:
                            rotation=270, fontsize=8)
         ax.set_xlim(left=0)
         ax.set_ylim(-np.pi, np.pi)
-
 
         for ax in [axes[0, 1], axes[0, 4], axes[0, 2], axes[1, 2]]:
             ax.axis("off")
@@ -1157,7 +1151,8 @@ class Vortector:
 
         main_vortex = choose_main_vortex(self.vortices)
 
-        vortices = [main_vortex] + [v for v in self.vortices if v != main_vortex]
+        vortices = [main_vortex] + \
+            [v for v in self.vortices if v != main_vortex]
 
         for n, vort in enumerate(vortices):
             ax.contour(Xc, Yc, vort["mask"], levels=[
@@ -1199,10 +1194,10 @@ class Vortector:
                     lw = 1
                     if n == 0:
                         plot_ellipse_periodic(
-                        ax, r0, phi0, w, h, crosshair=True, color=color_vortensity, ls="-", lw=lw, path_effects=path_effects)
+                            ax, r0, phi0, w, h, crosshair=True, color=color_vortensity, ls="-", lw=lw, path_effects=path_effects)
                     else:
                         plot_ellipse_periodic(
-                        ax, r0, phi0, w, h, color=color_vortensity, ls="-", lw=lw)
+                            ax, r0, phi0, w, h, color=color_vortensity, ls="-", lw=lw)
                     # if varname == "vortensity":
                     #     plot_ellipse_periodic(
                     #         ax, r0, phi0, 2*sigma_r, 2*sigma_phi, color=color_vortensity, ls="-", lw=0.5*lw)
@@ -1293,7 +1288,6 @@ def position_index(x, x0):
     return int(np.argmin(np.abs(x-x0)))
 
 
-
 def choose_main_vortex(vortices):
     """ Choose a vortex from a list of candidates. """
     if len(vortices) == 0:
@@ -1307,17 +1301,18 @@ def choose_main_vortex(vortices):
     for vortex in vortices[1:]:
         if vortex["mass"] > ref_mass/5:
             large_vortices.append(vortex)
-    
+
     vortices_with_fit = []
     for vortex in large_vortices:
         if "sigma_fit_2D_c" in vortex:
             vortices_with_fit.append(vortex)
-    
+
     if len(vortices_with_fit) > 0:
         return vortices_with_fit[0]
-    
-    sorted_vortices = sorted(large_vortices, key=lambda x : x["vortensity_min"])
+
+    sorted_vortices = sorted(large_vortices, key=lambda x: x["vortensity_min"])
     return sorted_vortices[0]
+
 
 def combine_periodic(x, y, m, bnd=(-np.pi, np.pi)):
     """ Combine an array split at a periodic boundary. 
@@ -1509,7 +1504,7 @@ def plot_ellipse_periodic(ax, x, y, w, h, crosshair=False, bnd=(-np.pi, np.pi), 
     from matplotlib.patches import Ellipse
     L = bnd[1] - bnd[0]
     C = 0.5*(bnd[1] + bnd[0])
-    
+
     plot_args = kwargs.copy()
     if "color" in kwargs:
         plot_args["edgecolor"] = kwargs["color"]
