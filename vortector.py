@@ -540,310 +540,6 @@ class Vortector:
             c[f"{varname}_fit_2D_{region}_mass"] = np.sum(numvals*area)
             c[f"{varname}_fit_2D_{region}_mass_fit"] = np.sum(fitvals*area)
 
-    def clamp_periodic(self, x):
-        """ Make sure a periodic quantity is inside the domain.
-
-        Parameters
-        ----------
-        x : float
-            Position.
-
-        Returns
-        -------
-        float
-            Position moved into the boundary values.
-        """
-        bnd = self.azimuthal_boundaries
-        rv = (x - bnd[0]) % (bnd[1]-bnd[0]) + bnd[0]
-        return rv
-
-    def select_fit_quantity(self, key):
-        """ Return values by name.
-
-        Parameters
-        ----------
-        key : str
-            Name of the quantity.
-
-        Returns
-        -------
-        array of floats
-            Data array.
-        """
-        if key == "vortensity":
-            return self.vortensity
-        elif key == "sigma":
-            return self.Sigma
-        elif key == "vorticity":
-            return self.vortensity
-        else:
-            raise AttributeError(
-                f"'{key}' is not a valid choice for a fit quantity.")
-
-    def vortex_mask_r(self, c, hw):
-        """ Construct a radial vortex mask from center and width value.
-
-        Parameters
-        ----------
-        c : float
-            Center position.
-        hw : float
-            Half of the width.
-
-        Returns
-        -------
-        array of bool
-            Mask indicating the vortex region.
-        """
-        wf = 1.5
-        r = self.Xc[:, 0]
-        mask = np.zeros(len(r), dtype=bool)
-        cind = np.argmin(np.abs(r - c))
-        lr = c - wf*hw
-        lind = np.argmin(np.abs(r - lr))
-        ur = c + wf*hw
-        uind = np.argmin(np.abs(r - ur))
-        mask = np.zeros(len(r), dtype=bool)
-        mask[lind:uind+1] = True
-        return mask
-
-    def show_radial_fit(self, ax, key, n, ref="contour", center=None):
-        """ Show a plot of a radial gaussian fit for the nth vortex.
-
-        Parameters
-        ----------
-        ax : plt.axes
-            Axes to plot on.
-        key : str
-            Name of the variable.
-        n : int
-            Number of the vortex in the sorted vortex array.
-        ref : str
-            Reference for the vortex region (contour/vortensity/sigma).
-        """
-        try:
-            c = [c for c in self.vortices][n]
-        except IndexError:
-            print("No vortex found.")
-            return
-
-        try:
-            center = ref if center is None else center
-            inds = self.select_center_inds(c, center)
-            mask_r, mask_phi = self.select_fit_region(c, ref)
-            vals = self.select_fit_quantity(key)
-
-            mask = mask_r
-
-            y = vals[:, inds[1]]
-            x = self.Xc[:, 0]
-
-            ax.plot(x, y, label=f"data slice n={c['n']}")
-            ax.plot(x[mask], y[mask], label="vortex region")
-
-            y0 = c[key + "_fit_2D_c"]
-            x0 = c[key + "_fit_2D_r0"]
-            a = c[key + "_fit_2D_a"]
-            sig = c[key + "_fit_2D_sigma_r"]
-            popt = [y0, a, x0, sig]
-
-            ax.plot(x[mask], gauss(x[mask], *popt),
-                    ls="--", color="C2", lw=2, label=f"fit")
-            ax.plot(x, gauss(x, *popt), color="C3", alpha=0.3)
-            ax.plot([x0], [y[inds[0]]], "x")
-        except KeyError as e:
-            print(f"Warning: KeyError encountered in showing r fit: {e}")
-            return
-
-        ax.set_xlabel(r"$r$")
-        ax.set_ylabel(f"{key}")
-        ax.legend()
-        ax.grid()
-
-    def show_azimuthal_fit(self, ax, key, n, ref="contour", center=None):
-        """ Show a plot of a azimuthal gaussian fit for the nth vortex.
-
-        Parameters
-        ----------
-        ax : plt.axes
-            Axes to plot on.
-        key : str
-            Name of the variable.
-        n : int
-            Number of the vortex in the sorted vortex array.
-        ref : str
-            Reference for the vortex region (contour/vortensity/sigma).
-        """
-        try:
-            c = [c for c in self.vortices][n]
-        except IndexError:
-            print("No vortex found.")
-            return
-
-        try:
-            center = ref if center is None else center
-            inds = self.select_center_inds(c, center)
-            mask_r, mask_phi = self.select_fit_region(c, ref)
-            vals = self.select_fit_quantity(key)
-            mask = mask_phi
-
-            y = vals[inds[0], :]
-            x = self.Yc[0, :]
-
-            ax.plot(x, y, label=f"data slice n={c['n']}")
-            plot_periodic(ax, x, y, mask, label="vortex region")
-            y0 = c[key + "_fit_2D_c"]
-            x0 = c[key + "_fit_2D_phi0"]
-            # x0 = self.clamp_periodic(x0)
-            a = c[key + "_fit_2D_a"]
-            sig = c[key + "_fit_2D_sigma_phi"]
-
-            bnd = self.azimuthal_boundaries
-            L = bnd[1] - bnd[0]
-
-            xc, yc = combine_periodic(x, y, mask)
-
-            if x0 < np.min(xc):
-                x0 += L
-            if x0 > np.max(xc):
-                x0 -= L
-            popt = [y0, a, x0, sig]
-
-            plot_periodic(ax, xc, gauss(xc, *popt), bnd=bnd,
-                          ls="--", lw=2, color="C2", label=f"fit")
-
-            xfull = np.linspace(x0-L/2, x0+L/2, endpoint=True)
-            plot_periodic(ax, xfull, gauss(xfull, *popt), bnd=bnd,
-                          ls="-", lw=1, color="C3", alpha=0.3)
-            ax.plot([self.clamp_periodic(x0)], y[[inds[1]]], "x")
-        except KeyError as e:
-            print(f"Warning: KeyError encountered in showing phi fit: {e}")
-            return
-
-        ax.set_xlabel(r"$\phi$")
-        ax.set_ylabel(f"{key}")
-        ax.set_xticks([-np.pi, -0.5*np.pi, 0, 0.5*np.pi, np.pi])
-        ax.set_xticklabels([r"$-\pi$", r"$-\pi/2$", "0", r"$\pi/2$", r"$\pi$"])
-        ax.legend()
-        ax.grid()
-
-    def vortex_mask_phi(self, c, hw):
-        """ Construct a azimuthal vortex mask from center and width value.
-
-        This function takes the periodic boundary into account.
-
-        Parameters
-        ----------
-        c : float
-            Center position.
-        hw : float
-            Half of the width.
-
-        Returns
-        -------
-        array of bool
-            Mask indicating the vortex region.
-        """
-        wf = 1.5
-        phi = self.Yc[0, :]
-        mask = np.zeros(len(phi), dtype=bool)
-        cind = np.argmin(np.abs(phi - c))
-        lphi = self.clamp_periodic(c - wf*hw)
-        lind = np.argmin(np.abs(phi - lphi))
-        uphi = self.clamp_periodic(c + wf*hw)
-        uind = np.argmin(np.abs(phi - uphi))
-        mask = np.zeros(len(phi), dtype=bool)
-        bnd = self.azimuthal_boundaries
-        if c + wf*hw > bnd[1] or c - wf*hw < bnd[0]:
-            mask[lind:] = True
-            mask[:uind+1] = True
-        else:
-            mask[lind:uind+1] = True
-        return mask
-
-    def select_center_inds(self, c, ref):
-        """ Select the indices which indicate the fit region.
-
-        The source which specifies the vortex region is either
-        the extracted contour or the fits of vortensity or surface density.
-        ref = contour, vortensity, sigma
-
-
-        Parameters
-        ----------
-        c : dict
-            Vortex candidate.
-        ref : str
-            Name of the variable to take the mask from.
-
-        Returns
-        -------
-        inds : tuple of two int
-            Radial and azimuthal index of center.
-        """
-        if ref == "contour":
-            r0, phi0 = c["vortensity_min_pos"]
-        elif ref == "vortensity":
-            r0 = c["vortensity_fit_2D_r0"]
-            phi0 = c["vortensity_fit_2D_phi0"]
-        elif ref == "sigma":
-            r0 = c["sigma_fit_2D_r0"]
-            phi0 = c["sigma_fit_2D_phi0"]
-        else:
-            raise AttributeError(
-                f"'{ref}' is not a valid reference for fitting.")
-        rind = position_index(self.Xc[:, 0], r0)
-        phiind = position_index(self.Yc[0, :], phi0)
-        inds = (rind, phiind)
-        return inds
-
-    def select_fit_region(self, c, ref):
-        """ Select the indices and masks which indicate the fit region.
-
-        The source which specifies the vortex region is either
-        the extracted contour or the fits of vortensity or surface density.
-        ref = contour, vortensity, sigma
-
-
-        Parameters
-        ----------
-        c : dict
-            Vortex candidate.
-        ref : str
-            Name of the variable to take the mask from.
-
-        Returns
-        -------
-        inds : tuple of two int
-            Radial and azimuthal index of center.
-        mask_r : array of bool
-            Mask indicating vortex region in radial direction.
-        mask_phi : array of bool
-            Mask indicating vortex region in azimuthal direction.
-        """
-        inds = self.select_center_inds(c, ref)
-        if ref == "contour":
-            mask = c["mask"]
-            mask_r = mask[:, inds[1]]
-            mask_phi = mask[inds[0], :]
-        elif ref == "vortensity":
-            center = c["vortensity_fit_2D_r0"]
-            hw = c["vortensity_fit_2D_sigma_r"]
-            mask_r = self.vortex_mask_r(center, hw)
-            center = c["vortensity_fit_2D_phi0"]
-            hw = c = c["vortensity_fit_2D_sigma_phi"]
-            mask_phi = self.vortex_mask_phi(center, hw)
-        elif ref == "sigma":
-            center = c["sigma_fit_2D_r0"]
-            hw = c["sigma_fit_2D_sigma_r"]
-            mask_r = self.vortex_mask_r(center, hw)
-            center = c["sigma_fit_2D_r0"]
-            hw = c["sigma_fit_2D_sigma_phi"]
-            mask_phi = self.vortex_mask_phi(center, hw)
-        else:
-            raise AttributeError(
-                f"'{ref}' is not a valid reference for fitting.")
-        return mask_r, mask_phi
 
     def calc_vortex_mass(self, c):
         mask = c["mask"]
@@ -958,9 +654,6 @@ class Vortector:
 
         self.remove_intermediate_data(include_mask, keep_internals)
 
-        # self.vortices = [c.copy() for c in self.candidates.values()]
-
-        # Return vortices
         return self.vortices
 
     def show_contours(self):
@@ -1230,6 +923,309 @@ class Vortector:
         else:
             cbar = ax.get_figure().colorbar(img, ax=cbar_axes, orientation="horizontal")
         cbar.set_label(label)
+
+    def clamp_periodic(self, x):
+        """ Make sure a periodic quantity is inside the domain.
+
+        Parameters
+        ----------
+        x : float
+            Position.
+
+        Returns
+        -------
+        float
+            Position moved into the boundary values.
+        """
+        bnd = self.azimuthal_boundaries
+        rv = (x - bnd[0]) % (bnd[1]-bnd[0]) + bnd[0]
+        return rv
+
+    def select_fit_quantity(self, key):
+        """ Return values by name.
+
+        Parameters
+        ----------
+        key : str
+            Name of the quantity.
+
+        Returns
+        -------
+        array of floats
+            Data array.
+        """
+        if key == "vortensity":
+            return self.vortensity
+        elif key == "sigma":
+            return self.Sigma
+        else:
+            raise AttributeError(
+                f"'{key}' is not a valid choice for a fit quantity.")
+
+    def vortex_mask_r(self, c, hw):
+        """ Construct a radial vortex mask from center and width value.
+
+        Parameters
+        ----------
+        c : float
+            Center position.
+        hw : float
+            Half of the width.
+
+        Returns
+        -------
+        array of bool
+            Mask indicating the vortex region.
+        """
+        wf = 1.5
+        r = self.Xc[:, 0]
+        mask = np.zeros(len(r), dtype=bool)
+        cind = np.argmin(np.abs(r - c))
+        lr = c - wf*hw
+        lind = np.argmin(np.abs(r - lr))
+        ur = c + wf*hw
+        uind = np.argmin(np.abs(r - ur))
+        mask = np.zeros(len(r), dtype=bool)
+        mask[lind:uind+1] = True
+        return mask
+
+    def show_radial_fit(self, ax, key, n, ref="contour", center=None):
+        """ Show a plot of a radial gaussian fit for the nth vortex.
+
+        Parameters
+        ----------
+        ax : plt.axes
+            Axes to plot on.
+        key : str
+            Name of the variable.
+        n : int
+            Number of the vortex in the sorted vortex array.
+        ref : str
+            Reference for the vortex region (contour/vortensity/sigma).
+        """
+        try:
+            c = [c for c in self.vortices][n]
+        except IndexError:
+            print("No vortex found.")
+            return
+
+        try:
+            center = ref if center is None else center
+            inds = self.select_center_inds(c, center)
+            mask_r, mask_phi = self.select_fit_region(c, ref)
+            vals = self.select_fit_quantity(key)
+
+            mask = mask_r
+
+            y = vals[:, inds[1]]
+            x = self.Xc[:, 0]
+
+            ax.plot(x, y, label=f"data slice n={c['n']}")
+            ax.plot(x[mask], y[mask], label="vortex region")
+
+            y0 = c[key + "_fit_2D_c"]
+            x0 = c[key + "_fit_2D_r0"]
+            a = c[key + "_fit_2D_a"]
+            sig = c[key + "_fit_2D_sigma_r"]
+            popt = [y0, a, x0, sig]
+
+            ax.plot(x[mask], gauss(x[mask], *popt),
+                    ls="--", color="C2", lw=2, label=f"fit")
+            ax.plot(x, gauss(x, *popt), color="C3", alpha=0.3)
+            ax.plot([x0], [y[inds[0]]], "x")
+        except KeyError as e:
+            print(f"Warning: KeyError encountered in showing r fit: {e}")
+            return
+
+        ax.set_xlabel(r"$r$")
+        ax.set_ylabel(f"{key}")
+        ax.legend()
+        ax.grid()
+
+    def show_azimuthal_fit(self, ax, key, n, ref="contour", center=None):
+        """ Show a plot of a azimuthal gaussian fit for the nth vortex.
+
+        Parameters
+        ----------
+        ax : plt.axes
+            Axes to plot on.
+        key : str
+            Name of the variable.
+        n : int
+            Number of the vortex in the sorted vortex array.
+        ref : str
+            Reference for the vortex region (contour/vortensity/sigma).
+        """
+        try:
+            c = [c for c in self.vortices][n]
+        except IndexError:
+            print("No vortex found.")
+            return
+
+        try:
+            center = ref if center is None else center
+            inds = self.select_center_inds(c, center)
+            mask_r, mask_phi = self.select_fit_region(c, ref)
+            vals = self.select_fit_quantity(key)
+            mask = mask_phi
+
+            y = vals[inds[0], :]
+            x = self.Yc[0, :]
+
+            ax.plot(x, y, label=f"data slice n={c['n']}")
+            plot_periodic(ax, x, y, mask, label="vortex region")
+            y0 = c[key + "_fit_2D_c"]
+            x0 = c[key + "_fit_2D_phi0"]
+            # x0 = self.clamp_periodic(x0)
+            a = c[key + "_fit_2D_a"]
+            sig = c[key + "_fit_2D_sigma_phi"]
+
+            bnd = self.azimuthal_boundaries
+            L = bnd[1] - bnd[0]
+
+            xc, yc = combine_periodic(x, y, mask)
+
+            if x0 < np.min(xc):
+                x0 += L
+            if x0 > np.max(xc):
+                x0 -= L
+            popt = [y0, a, x0, sig]
+
+            plot_periodic(ax, xc, gauss(xc, *popt), bnd=bnd,
+                          ls="--", lw=2, color="C2", label=f"fit")
+
+            xfull = np.linspace(x0-L/2, x0+L/2, endpoint=True)
+            plot_periodic(ax, xfull, gauss(xfull, *popt), bnd=bnd,
+                          ls="-", lw=1, color="C3", alpha=0.3)
+            ax.plot([self.clamp_periodic(x0)], y[[inds[1]]], "x")
+        except KeyError as e:
+            print(f"Warning: KeyError encountered in showing phi fit: {e}")
+            return
+
+        ax.set_xlabel(r"$\phi$")
+        ax.set_ylabel(f"{key}")
+        ax.set_xticks([-np.pi, -0.5*np.pi, 0, 0.5*np.pi, np.pi])
+        ax.set_xticklabels([r"$-\pi$", r"$-\pi/2$", "0", r"$\pi/2$", r"$\pi$"])
+        ax.legend()
+        ax.grid()
+
+    def vortex_mask_phi(self, c, hw):
+        """ Construct a azimuthal vortex mask from center and width value.
+
+        This function takes the periodic boundary into account.
+
+        Parameters
+        ----------
+        c : float
+            Center position.
+        hw : float
+            Half of the width.
+
+        Returns
+        -------
+        array of bool
+            Mask indicating the vortex region.
+        """
+        wf = 1.5
+        phi = self.Yc[0, :]
+        mask = np.zeros(len(phi), dtype=bool)
+        cind = np.argmin(np.abs(phi - c))
+        lphi = self.clamp_periodic(c - wf*hw)
+        lind = np.argmin(np.abs(phi - lphi))
+        uphi = self.clamp_periodic(c + wf*hw)
+        uind = np.argmin(np.abs(phi - uphi))
+        mask = np.zeros(len(phi), dtype=bool)
+        bnd = self.azimuthal_boundaries
+        if c + wf*hw > bnd[1] or c - wf*hw < bnd[0]:
+            mask[lind:] = True
+            mask[:uind+1] = True
+        else:
+            mask[lind:uind+1] = True
+        return mask
+
+    def select_center_inds(self, c, ref):
+        """ Select the indices which indicate the fit region.
+
+        The source which specifies the vortex region is either
+        the extracted contour or the fits of vortensity or surface density.
+        ref = contour, vortensity, sigma
+
+
+        Parameters
+        ----------
+        c : dict
+            Vortex candidate.
+        ref : str
+            Name of the variable to take the mask from.
+
+        Returns
+        -------
+        inds : tuple of two int
+            Radial and azimuthal index of center.
+        """
+        if ref == "contour":
+            r0, phi0 = c["vortensity_min_pos"]
+        elif ref == "vortensity":
+            r0 = c["vortensity_fit_2D_r0"]
+            phi0 = c["vortensity_fit_2D_phi0"]
+        elif ref == "sigma":
+            r0 = c["sigma_fit_2D_r0"]
+            phi0 = c["sigma_fit_2D_phi0"]
+        else:
+            raise AttributeError(
+                f"'{ref}' is not a valid reference for fitting.")
+        rind = position_index(self.Xc[:, 0], r0)
+        phiind = position_index(self.Yc[0, :], phi0)
+        inds = (rind, phiind)
+        return inds
+
+    def select_fit_region(self, c, ref):
+        """ Select the indices and masks which indicate the fit region.
+
+        The source which specifies the vortex region is either
+        the extracted contour or the fits of vortensity or surface density.
+        ref = contour, vortensity, sigma
+
+
+        Parameters
+        ----------
+        c : dict
+            Vortex candidate.
+        ref : str
+            Name of the variable to take the mask from.
+
+        Returns
+        -------
+        inds : tuple of two int
+            Radial and azimuthal index of center.
+        mask_r : array of bool
+            Mask indicating vortex region in radial direction.
+        mask_phi : array of bool
+            Mask indicating vortex region in azimuthal direction.
+        """
+        inds = self.select_center_inds(c, ref)
+        if ref == "contour":
+            mask = c["mask"]
+            mask_r = mask[:, inds[1]]
+            mask_phi = mask[inds[0], :]
+        elif ref == "vortensity":
+            center = c["vortensity_fit_2D_r0"]
+            hw = c["vortensity_fit_2D_sigma_r"]
+            mask_r = self.vortex_mask_r(center, hw)
+            center = c["vortensity_fit_2D_phi0"]
+            hw = c = c["vortensity_fit_2D_sigma_phi"]
+            mask_phi = self.vortex_mask_phi(center, hw)
+        elif ref == "sigma":
+            center = c["sigma_fit_2D_r0"]
+            hw = c["sigma_fit_2D_sigma_r"]
+            mask_r = self.vortex_mask_r(center, hw)
+            center = c["sigma_fit_2D_r0"]
+            hw = c["sigma_fit_2D_sigma_phi"]
+            mask_phi = self.vortex_mask_phi(center, hw)
+        else:
+            raise AttributeError(
+                f"'{ref}' is not a valid reference for fitting.")
+        return mask_r, mask_phi
 
 
 def fig2rgb_array(fig):
