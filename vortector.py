@@ -1077,7 +1077,6 @@ class Vortector:
         ax.set_xlabel("")
         ax.set_ylabel("")
         ax.set_yticklabels([])
-        # xticks = ax.get_xticks()
         ax.set_xticks(xticks)
         ax.set_xticklabels([f"{x:.1e}" for x in xticks],
                            rotation=270, fontsize=8)
@@ -1198,15 +1197,6 @@ class Vortector:
                     else:
                         plot_ellipse_periodic(
                             ax, r0, phi0, w, h, color=color_vortensity, ls="-", lw=lw)
-                    # if varname == "vortensity":
-                    #     plot_ellipse_periodic(
-                    #         ax, r0, phi0, 2*sigma_r, 2*sigma_phi, color=color_vortensity, ls="-", lw=0.5*lw)
-                    #     plot_ellipse_periodic(
-                    #         ax, r0, phi0, 4*sigma_r, 4*sigma_phi, color=color_vortensity, ls="-", lw=0.5*lw)
-                    #     plot_ellipse_periodic(
-                    #         ax, r0, phi0, 6*sigma_r, 6*sigma_phi, color=color_vortensity, ls="-", lw=0.5*lw)
-                    #     plot_ellipse_periodic(
-                    #         ax, r0, phi0, 8*sigma_r, 8*sigma_phi, color=color_vortensity, ls="-", lw=0.5*lw)
 
                     r0 = vort["sigma_fit_2D_r0"]
                     sigma_r = vort["sigma_fit_2D_sigma_r"]
@@ -1222,15 +1212,6 @@ class Vortector:
                     else:
                         plot_ellipse_periodic(
                             ax, r0, phi0, w, h, color="C2", ls="-", lw=lw)
-                    # if varname == "sigma":
-                    #     plot_ellipse_periodic(
-                    #         ax, r0, phi0, 2*sigma_r, 2*sigma_phi, color="C2", ls="-", lw=0.5*lw)
-                    #     plot_ellipse_periodic(
-                    #         ax, r0, phi0, 4*sigma_r, 4*sigma_phi, color="C2", ls="-", lw=0.5*lw)
-                    #     plot_ellipse_periodic(
-                    #         ax, r0, phi0, 6*sigma_r, 6*sigma_phi, color="C2", ls="-", lw=0.5*lw)
-                    #     plot_ellipse_periodic(
-                    #         ax, r0, phi0, 8*sigma_r, 8*sigma_phi, color="C2", ls="-", lw=0.5*lw)
                 except KeyError:
                     pass
 
