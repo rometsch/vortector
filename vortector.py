@@ -456,12 +456,6 @@ class Vortector:
                                bup={"c": 1.25*c_ref, "a": 1.25*a_guess, "x0": r0+0.25*dr, "y0": phi0+0.25*dphi})
         p, _ = fitter.fit()
 
-        fit_r = {"y0": p[0], "a": p[1], "x0": p[2], "sigma": p[4]}
-        save_fit(vort, "sigma", fit_r, axis="r")
-
-        fit_phi = {"y0": p[0], "a": p[1], "x0": p[3], "sigma": p[5]}
-        save_fit(vort, "sigma", fit_phi, axis="phi")
-
         fit = {"c": p[0], "a": p[1], "r0": p[2], "phi0": p[3],
                "sigma_r": p[4], "sigma_phi": p[5], "popt": p}
         save_fit(vort, "sigma", fit)
@@ -498,12 +492,6 @@ class Vortector:
                                blow={"c": 0.75*c_ref, "a": 1.25*a_guess},
                                bup={"c": 1.25*c_ref, "a": 0.75*a_guess})
         p, _ = fitter.fit()
-
-        fit_r = {"y0": p[0], "a": p[1], "x0": p[2], "sigma": p[4]}
-        save_fit(vort, "vortensity", fit_r, axis="r")
-
-        fit_phi = {"y0": p[0], "a": p[1], "x0": p[3], "sigma": p[5]}
-        save_fit(vort, "vortensity", fit_phi, axis="phi")
 
         fit = {"c": p[0], "a": p[1], "r0": p[2], "phi0": p[3],
                "sigma_r": p[4], "sigma_phi": p[5], "popt": p}
@@ -562,139 +550,6 @@ class Vortector:
             c[f"{varname}_fit_2D_{region}_mass"] = np.sum(numvals*area)
             c[f"{varname}_fit_2D_{region}_mass_fit"] = np.sum(fitvals*area)
 
-    def fit_gaussian_phi(self, c, key, ref="contour", center=None, fixed=None, blow=None, bup=None, p0=None, fix_avg=False, autoweight=True):
-        """ Fit a gaussian in phi direction.
-
-        Fit a region in r direction either specified by the mask
-        generated from the contour or from a previous fit.
-        This is controlled with the ref parameter which can be:
-        contour, vortensity, sigma
-
-        Parameters
-        ----------
-        c : dict
-            Vortex candidate.
-        key : str
-            Name of the variable for fitting.
-        ref : str
-            Name of the variable to take the mask from.
-        """
-        fixed = fixed if fixed is not None else {}
-        blow = blow if blow is not None else {}
-        bup = bup if bup is not None else {}
-        p0 = p0 if p0 is not None else {}
-
-        if center is None:
-            center = ref
-        inds = self.select_center_inds(c, center)
-        mask_r, mask_phi = self.select_fit_region(c, ref)
-        vals = self.select_fit_quantity(key)
-
-        vals_phi = vals[inds[0], :]
-
-        phi = self.Yc_view[inds[0], :]
-
-        x, y = combine_periodic(phi, vals_phi, mask_phi,
-                                bnd=self.azimuthal_boundaries)
-
-        if fix_avg:
-            fixed["y0"] = np.average(vals_phi)
-
-        if "sigma" not in bup:
-            bup["sigma"] = (np.max(x) - np.min(x))
-
-        if "sigma" not in blow:
-            blow["sigma"] = (np.max(x) - np.min(x))/10
-
-        fitter = GaussFitter(x, y, autoweight=autoweight,
-                             fixed=fixed, blow=blow, bup=bup, p0=p0,
-                             verbose=self.verbose,
-                             name=f"{key} azimuthal n={c['n']}")
-        popt, pcov = fitter.fit()
-
-        diff = np.sum(np.abs(y - gauss(x, *popt)))
-        reldiff = diff / np.sum(y - np.min(y))
-
-        # fig, ax = plt.subplots()
-        # ax.plot(x, y)
-        # ax.plot(x, gauss(x, *popt), "--")
-        # ax.set_title(
-        #     fitter.name + f" reldiff={reldiff:.2e}, diff={diff:.2e}, r = {self.Xc_view[inds]:.2e} phi = {self.Yc_view[inds]:.2e}")
-
-        fit = {
-            "popt": popt,
-            "inds": inds,
-            "reldiff": reldiff,
-            "diff": diff
-        }
-
-        return fit
-
-    def fit_gaussian_r(self, c, key, ref="contour", center=None, fixed=None, blow=None, bup=None, p0=None, autoweight=True):
-        """ Fit a gaussian in r direction.
-
-        Fit a region in r direction either specified by the mask
-        generated from the contour or from a previous fit.
-        This is controlled with the ref parameter which can be:
-        contour, vortensity, sigma
-
-        Parameters
-        ----------
-        c : dict
-            Vortex candidate.
-        key : str
-            Name of the variable for fitting.
-        ref : str
-            Name of the variable to take the mask from.
-        """
-        fixed = fixed if fixed is not None else {}
-        blow = blow if blow is not None else {}
-        bup = bup if bup is not None else {}
-        p0 = p0 if p0 is not None else {}
-
-        center = ref if center is None else center
-        inds = self.select_center_inds(c, center)
-        mask_r, mask_phi = self.select_fit_region(c, ref)
-        vals = self.select_fit_quantity(key)
-
-        vals_r = vals[:, inds[1]]
-        vals_phi = vals[inds[0], :]
-
-        r = self.Xc_view[:, inds[1]]
-        phi = self.Yc_view[inds[0], :]
-
-        x = r[mask_r]
-        y = vals_r[mask_r]
-
-        if "sigma" not in bup:
-            bup["sigma"] = (np.max(x) - np.min(x))
-
-        if "sigma" not in blow:
-            blow["sigma"] = (np.max(x) - np.min(x))/10
-
-        fitter = GaussFitter(x, y, autoweight=autoweight,
-                             fixed=fixed, blow=blow, bup=bup, p0=p0,
-                             verbose=self.verbose,
-                             name=f"{key} radial n={c['n']}")
-        popt, pcov = fitter.fit()
-
-        diff = np.average(np.abs(y - gauss(x, *popt)))
-        reldiff = diff / (np.max(y) - np.min(y))
-
-        fit = {
-            "popt": popt,
-            "inds": inds,
-            "reldiff": reldiff,
-            "diff": diff
-        }
-
-        # fig, ax = plt.subplots()
-        # ax.plot(x, y)
-        # ax.plot(x, gauss(x, *popt), "--")
-        # ax.set_title(
-        #     fitter.name + f" reldiff={reldiff:.2e}, diff={diff:.2e}, r = {self.Xc_view[inds]:.2e} phi = {self.Yc_view[inds]:.2e}")
-
-        return fit
 
     def clamp_periodic(self, x):
         """ Make sure a periodic quantity is inside the domain.
