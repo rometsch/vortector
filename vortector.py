@@ -96,12 +96,12 @@ class Vortector:
         if self.verbose:
             print("Number of found contours:", len(contours))
 
-        contours_dict = {n: {"cnt": cnt, "n": n}
+        contours_dict = {n: {"contour": cnt, "opencv_contour_number": n}
                          for n, cnt in enumerate(contours)}
 
         areas = [cv2.contourArea(c) for c in contours]
         for n, d in enumerate(contours_dict.values()):
-            d["area"] = areas[n]
+            d["pixel_area"] = areas[n]
 
         sort_inds = np.argsort(areas)
 
@@ -114,10 +114,10 @@ class Vortector:
 
         self.contours_closed = []
         for n, contour in enumerate(self.contours_largest):
-            cnt = contour["cnt"]
+            cnt = contour["contour"]
             l = cv2.arcLength(cnt, True)
-            contour["arcLength"] = l
-            a = contour["area"]
+            contour["pixel_arcLength"] = l
+            a = contour["pixel_area"]
             leftmost = tuple(cnt[cnt[:, :, 0].argmin()][0])
             rightmost = tuple(cnt[cnt[:, :, 0].argmax()][0])
             topmost = tuple(cnt[cnt[:, :, 1].argmin()][0])
@@ -172,7 +172,7 @@ class Vortector:
 
         if self.verbose:
             print("Number of closed contours:", len(self.contours_closed))
-            print("Area of contours:", [c["area"]
+            print("Area of contours:", [c["pixel_area"]
                                         for c in self.contours_closed])
 
     def extract_ellipse_contours(self):
@@ -180,7 +180,7 @@ class Vortector:
 
         self.candidates = {}
         for contour in self.contours_closed:
-            cnt = contour["cnt"]
+            cnt = contour["contour"]
             ellipse = cv2.fitEllipse(cnt)
 
             im_shape = np.zeros(self.thresh.shape)
@@ -192,13 +192,13 @@ class Vortector:
             difference = np.abs(im_shape - im_ellipse)
             difference_area = np.sum(difference/255)
 
-            rel_delta = difference_area / contour["area"]
+            rel_delta = difference_area / contour["pixel_area"]
 
             if rel_delta > self.max_ellipse_deviation:
                 continue
 
             contour["mask_extended"] = im_shape
-            self.candidates[contour["n"]] = contour
+            self.candidates[contour["opencv_contour_number"]] = contour
 
     def create_vortex_mask(self):
         # Transform the image from ellipse fitting images back to match the grid
@@ -257,7 +257,7 @@ class Vortector:
 
         for c in self.candidates.values():
             ancestors = []
-            n_parent = c["n"]
+            n_parent = c["opencv_contour_number"]
             for n in range(1000):
                 n_parent = self.hierarchy[0, n_parent, 3]
                 if n_parent == -1 or n_parent not in self.candidates:
@@ -265,7 +265,7 @@ class Vortector:
                 ancestors.append(n_parent)
             c["ancestors"] = ancestors
             if self.verbose:
-                print("Ancestors:", c["n"], ancestors)
+                print("Ancestors:", c["opencv_contour_number"], ancestors)
 
     def generate_decendents(self):
         # Construct decendents from ancestor list
@@ -279,13 +279,13 @@ class Vortector:
                     decendents[n] = [i for i in reversed(ancestors[:k])]
 
         for c in self.candidates.values():
-            if c["n"] in decendents:
-                dec = decendents[c["n"]]
+            if c["opencv_contour_number"] in decendents:
+                dec = decendents[c["opencv_contour_number"]]
             else:
                 dec = []
             c["decendents"] = dec
             if self.verbose:
-                print("Descendents:", c["n"], dec)
+                print("Descendents:", c["opencv_contour_number"], dec)
 
     def prune_candidates_by_hierarchy(self):
         # Remove children from candidates
@@ -306,7 +306,7 @@ class Vortector:
 
         no_min = []
         for n, c in self.candidates.items():
-            cid = c["n"]
+            cid = c["opencv_contour_number"]
             try:
                 if c["vortensity_min"] > 1:
                     if self.verbose:
@@ -665,8 +665,8 @@ class Vortector:
         self.vortices = []
         for c in self.candidates.values():
             if not keep_internals:
-                for key in ["cnt", "mask_extended", "bounding_hor",
-                            "bounding_vert", "area", "arcLength",
+                for key in ["contour", "mask_extended", "bounding_hor",
+                            "bounding_vert", "pixel_arcLength", "pixel_area",
                             "ancestors", "decendents"]:
                     del c[key]
             if not include_mask:
