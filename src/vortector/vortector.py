@@ -1,11 +1,7 @@
-import cv2
-import matplotlib.pyplot as plt
-import matplotlib.colors as colors
 import numpy as np
 
-from .gaussfit import gauss, gauss2D, Gauss2DFitter
-from . import plotperiodic as plotper
-from . import plot
+from .gaussfit import gauss2D, Gauss2DFitter
+from .detect import detect_elliptic_contours
 
 
 class Vortector:
@@ -33,271 +29,10 @@ class Vortector:
 
         self.verbose = verbose
 
-    def contour_image_dimensions(self):
-
-        self.Nx, self.Ny = self.Vortensity.shape
-        self.int_aspect = int(np.max([self.Nx/self.Ny, self.Ny/self.Nx]))
-
-        if self.int_aspect >= 2:
-            if self.Nx < self.Ny:
-                self.CNx = self.int_aspect*self.Nx
-                self.CNy = self.Ny
-            else:
-                self.CNx = self.Nx
-                self.CNy = self.int_aspect*self.Ny
-        else:
-            self.CNx = self.Nx
-            self.CNy = self.Ny
-
-        if min(self.CNx, self.CNy) < 1000:
-            self.supersample = int(np.ceil(1000/min(self.CNx, self.CNy)))
-        else:
-            self.supersample = 1
-
-        self.CNx *= self.supersample
-        self.CNy *= self.supersample
-
-        if self.verbose:
-            print(
-                f"Contour image dimensions: Nx {self.Nx}, Ny {self.Ny}, int_aspect {self.int_aspect}, supersample {self.supersample}, CNx {self.CNx}, CNy {self.CNy}")
-
-    def contour_image(self):
-        fig = plt.figure(frameon=False, figsize=(self.CNx, 2*self.CNy), dpi=1)
-        # fig.set_size_inches(w,h)
-        ax = plt.Axes(fig, [0., 0., 1., 1.])
-        ax.set_axis_off()
-        fig.add_axes(ax)
-
-        # periodically extend vortensity
-        vort = self.Vortensity
-        Hhalf = int(vort.shape[1]/2)
-        vort_pe = np.concatenate(
-            [vort[:, Hhalf:],
-             vort,
-             vort[:, :Hhalf]],
-            axis=1
-        )
-
-        ax.contour(vort_pe.transpose(),
-                   levels=self.levels, linewidths=self.CNx/1000)
-
-        img_data = fig2rgb_array(fig)
-        plt.close(fig)
-
-        img_data = cv2.cvtColor(img_data, cv2.COLOR_BGR2GRAY)
-        # Threshold contour image for full contrast
-        _, self.thresh = cv2.threshold(img_data, 250, 255, 0)
-
-    def find_contours(self):
-
-        # Extract contours and construct hierarchy
-
-        contours, self.hierarchy = cv2.findContours(
-            self.thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-
-        if self.verbose:
-            print("Number of found contours:", len(contours))
-
-        contours_dict = {n: {"contour": cnt, "opencv_contour_number": n}
-                         for n, cnt in enumerate(contours)}
-
-        areas = [cv2.contourArea(c) for c in contours]
-        for n, d in enumerate(contours_dict.values()):
-            d["pixel_area"] = areas[n]
-
-        sort_inds = np.argsort(areas)
-
-        # take the up to 100 largest patches
-        self.contours_largest = [contours_dict[i]
-                                 for i in [n for n in sort_inds[::-1]][:100]]
-
-    def extract_closed_contours(self):
-        # Extract closed contours
-
-        self.contours_closed = []
-        for n, contour in enumerate(self.contours_largest):
-            cnt = contour["contour"]
-            l = cv2.arcLength(cnt, True)
-            contour["pixel_arcLength"] = l
-            a = contour["pixel_area"]
-            leftmost = tuple(cnt[cnt[:, :, 0].argmin()][0])
-            rightmost = tuple(cnt[cnt[:, :, 0].argmax()][0])
-            topmost = tuple(cnt[cnt[:, :, 1].argmin()][0])
-            bottommost = tuple(cnt[cnt[:, :, 1].argmax()][0])
-            dx = rightmost[0] - leftmost[0]
-            dy = bottommost[1] - topmost[1]
-
-            Nh = int(self.thresh.shape[0]/2)
-            Nq = int(self.thresh.shape[0]/4)
-
-            # sort out mirrors of contours fully contained in original area
-            if bottommost[1] < Nq or topmost[1] > 3*Nq:
-                continue
-
-            is_not_too_elongated = dx > 0 and dy > 0 and max(
-                dx/dy, dy/dx) < self.max_ellipse_aspect_ratio
-            is_area_larget_delimiter = l > 0 and a > l
-            is_not_spanning_whole_height = dy < 0.5*0.95*self.thresh.shape[0]
-
-            if not(is_not_too_elongated and is_area_larget_delimiter and is_not_spanning_whole_height):
-                continue
-
-            # sort out the lower of mirror images
-            bounding_hor = np.array([rightmost[0], leftmost[0]])
-            bounding_vert = np.array([topmost[1], bottommost[1]])
-            contour["bounding_hor"] = bounding_hor
-            contour["bounding_vert"] = bounding_vert
-            # save the bounding points
-            contour["bottom_extended"] = bottommost
-            contour["top_extended"] = topmost
-            contour["left_extended"] = leftmost
-            contour["right_extended"] = rightmost
-
-            to_del = None
-            found_mirror = False
-            for k, c in enumerate(self.contours_closed):
-                same_hor = (bounding_hor == c["bounding_hor"]).all()
-                same_vert = (np.abs(bounding_vert %
-                                    Nh - c["bounding_vert"] % Nh) < 20).all()
-                if same_hor and same_vert:
-                    if bounding_vert[1] > c["bounding_vert"][1]:
-                        to_del = k
-                    found_mirror = True
-                    break
-
-            if found_mirror:
-                if to_del is not None:
-                    del self.contours_closed[to_del]
-                    self.contours_closed.append(contour)
-            else:
-                self.contours_closed.append(contour)
-
-        if self.verbose:
-            print("Number of closed contours:", len(self.contours_closed))
-            print("Area of contours:", [c["pixel_area"]
-                                        for c in self.contours_closed])
-
-    def extract_ellipse_contours(self):
-        # Extract contours that match an ellipse
-
-        self.candidates = {}
-        for contour in self.contours_closed:
-            cnt = contour["contour"]
-            ellipse = cv2.fitEllipse(cnt)
-
-            im_shape = np.zeros(self.thresh.shape)
-            cv2.drawContours(im_shape, [cnt], 0, (255, 255, 255), -1)
-
-            im_ellipse = np.zeros(self.thresh.shape)
-            im_ellipse = cv2.ellipse(im_ellipse, ellipse, (255, 255, 255), -1)
-
-            difference = np.abs(im_shape - im_ellipse)
-            difference_area = np.sum(difference/255)
-
-            rel_delta = difference_area / contour["pixel_area"]
-
-            if rel_delta > self.max_ellipse_deviation:
-                continue
-
-            contour["mask_extended"] = im_shape
-            self.candidates[contour["opencv_contour_number"]] = contour
-
-    def create_vortex_mask(self):
-        # Transform the image from ellipse fitting images back to match the grid
-
-        for contour in self.candidates.values():
-            mask_extended = contour["mask_extended"]
-            # reduce back to normal image size
-            Nq = int(mask_extended.shape[0]/4)
-            mask_lower = mask_extended[3*Nq:, :]
-            mask_upper = mask_extended[:Nq, :]
-            mask_repeated = np.concatenate([mask_lower, mask_upper])
-            mask_orig = mask_extended[Nq:3*Nq, :]
-            mask_reduced = np.logical_or(mask_orig, mask_repeated)
-
-            # fit back to original data shape
-            mask = mask_reduced.transpose()[:, ::-1]
-            mask = mask[::self.supersample, ::self.supersample]
-            if self.int_aspect >= 2:
-                if self.Nx < self.Ny:
-                    mask = mask[::self.int_aspect, :]
-                else:
-                    mask = mask[:, ::self.int_aspect]
-            mask = np.array(mask, dtype=bool)
-            contour["mask"] = mask
-
-            # map the bounding points to view and data shape
-            for key in ["bottom", "top", "left", "right"]:
-                pnt = contour[key + "_extended"]
-                x, y = map_ext_pnt_to_orig(pnt, Nq)
-                y = 2*Nq - y
-                x /= self.supersample
-                y /= self.supersample
-                if self.Nx < self.Ny:
-                    x /= self.int_aspect
-                else:
-                    y /= self.int_aspect
-                x = int(x)
-                y = int(y)
-                contour[key] = (x, y)
-
-        if self.verbose:
-            print(
-                f"Mapping mask: mask.shape = {mask.shape}, mask_orig.shape {mask_orig.shape}")
+        self.calc_cell_masses()
 
     def calc_cell_masses(self):
         self.mass = self.Area*self.SurfaceDensity
-
-    def generate_ancestors(self):
-        # Generate ancestor list
-
-        # The hierarchy generated by opencv in the contour finder outputs a list with the syntax
-        # ```
-        # [Next, Previous, First_Child, Parent]
-        # ```
-        # If any of those is not available its encoded  by -1.
-
-        for c in self.candidates.values():
-            ancestors = []
-            n_parent = c["opencv_contour_number"]
-            for n in range(1000):
-                n_parent = self.hierarchy[0, n_parent, 3]
-                if n_parent == -1 or n_parent not in self.candidates:
-                    break
-                ancestors.append(n_parent)
-            c["ancestors"] = ancestors
-            if self.verbose:
-                print("Ancestors:", c["opencv_contour_number"], ancestors)
-
-    def generate_decendents(self):
-        # Construct decendents from ancestor list
-        # This is done to avoid causing trouble when an intermediate contour is missing.
-
-        decendents = {}
-        for c in self.candidates.values():
-            ancestors = c["ancestors"]
-            for k, n in enumerate(ancestors):
-                if not n in decendents or len(decendents[n]) < k:
-                    decendents[n] = [i for i in reversed(ancestors[:k])]
-
-        for c in self.candidates.values():
-            if c["opencv_contour_number"] in decendents:
-                dec = decendents[c["opencv_contour_number"]]
-            else:
-                dec = []
-            c["decendents"] = dec
-            if self.verbose:
-                print("Descendents:", c["opencv_contour_number"], dec)
-
-    def prune_candidates_by_hierarchy(self):
-        # Remove children from candidates
-
-        decendents = []
-        for c in self.candidates.values():
-            decendents += c["decendents"].copy()
-        decendents = set(decendents)
-        for n in decendents:
-            del self.candidates[n]
 
     def remove_non_vortex_candidates(self):
         """ Remove candidates not having vortex properties
@@ -644,18 +379,11 @@ class Vortector:
 
     def detect_vortex(self, include_mask=False, keep_internals=False):
 
-        self.contour_image_dimensions()
-        self.contour_image()
-        self.find_contours()
-        self.extract_closed_contours()
-        self.extract_ellipse_contours()
-        self.create_vortex_mask()
-
-        self.calc_cell_masses()
-
-        self.generate_ancestors()
-        self.generate_decendents()
-        self.prune_candidates_by_hierarchy()
+        self.candidates = detect_elliptic_contours(self.Vortensity,
+                                                   self.levels,
+                                                   self.max_ellipse_aspect_ratio,
+                                                   self.max_ellipse_deviation,
+                                                   self.verbose)
 
         self.calculate_contour_properties()
 
@@ -687,22 +415,3 @@ class Vortector:
                     del c[key]
             if not include_mask:
                 del c["mask"]
-
-
-def fig2rgb_array(fig):
-    fig.canvas.draw()
-    buf = fig.canvas.tostring_rgb()
-    ncols, nrows = fig.canvas.get_width_height()
-    return np.fromstring(buf, dtype=np.uint8).reshape(nrows, ncols, 3)
-
-
-def map_ext_pnt_to_orig(pnt, Nq):
-    x = pnt[0]
-    y = pnt[1]
-    if y > Nq and y <= 3*Nq:
-        y -= Nq
-    elif y < Nq:
-        y += Nq
-    elif y > 3*Nq:
-        y -= 3*Nq
-    return (x, y)
