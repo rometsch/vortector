@@ -1,5 +1,6 @@
 import numpy as np
 
+from . import analyze
 from .gaussfit import gauss2D, Gauss2DFitter
 from .contours import detect_elliptic_contours
 
@@ -13,9 +14,7 @@ class Vortector:
 
         self.SurfaceDensity = Sigma
 
-        self.Rc = Xc
         self.Xc = Xc
-        self.Phic = Yc
         self.Yc = Yc
         self.Area = A
 
@@ -29,10 +28,48 @@ class Vortector:
 
         self.verbose = verbose
 
-        self.calc_cell_masses()
-
-    def calc_cell_masses(self):
         self.mass = self.Area*self.SurfaceDensity
+
+    def detect_vortices(self, include_mask=False, keep_internals=False):
+
+        self.candidates = detect_elliptic_contours(self.Vortensity,
+                                                   self.levels,
+                                                   self.max_ellipse_aspect_ratio,
+                                                   self.max_ellipse_deviation,
+                                                   self.verbose)
+
+        self.calculate_contour_properties()
+
+        self.vortices = []
+        for c in self.candidates.values():
+            self.vortices.append({"contour": c})
+
+        self.fit_contours()
+        self.remove_non_vortex_candidates()
+        self.remove_duplicates_by_min_vort_pos()
+
+        self.sort_vortices_by_mass()
+
+        self.remove_intermediate_data(include_mask, keep_internals)
+
+        return self.vortices
+
+    def sort_vortices_by_mass(self):
+        """ Sort the vortices by mass decending. """
+        self.vortices = [v for v in reversed(
+            sorted(self.vortices, key=lambda v: v["contour"]["mass"]))]
+
+    def remove_intermediate_data(self, include_mask=False, keep_internals=False):
+        for v in self.vortices:
+            c = v["contour"]
+            if not keep_internals:
+                for key in ["contour", "mask_extended", "bounding_hor",
+                            "bounding_vert", "pixel_arcLength", "pixel_area",
+                            "top_extended", "left_extended", "bottom_extended", "right_extended",
+                            "ancestors", "decendents"]:
+                    del c[key]
+            if not include_mask:
+                del c["mask"]
 
     def remove_non_vortex_candidates(self):
         """ Remove candidates not having vortex properties
@@ -87,6 +124,23 @@ class Vortector:
         for k, n in enumerate(set(to_del)):
             del self.vortices[n-k]
 
+    def calculate_contour_properties(self):
+        # Get the mass and vortensity inside the candidates
+
+        for c in self.candidates.values():
+            try:
+                analyze.calc_vortex_mass(c, self.mass)
+                analyze.calc_vortensity(c, self.Vortensity)
+                analyze.calc_sigma(c, self.SurfaceDensity)
+                analyze.calc_vortex_extent(c, self.Area, self.Xc, self.Yc)
+                analyze.find_vortensity_min_position(
+                    c, self.Xc, self.Yc, self.Vortensity)
+                analyze.find_density_max_position(
+                    c, self.Xc, self.Yc, self.SurfaceDensity)
+            except (ValueError, RuntimeError) as e:
+                # print("Warning: ValueError encountered in calculating vortex properties:", e)
+                pass
+
     def fit_contours(self):
         for vortex in self.vortices:
             try:
@@ -98,22 +152,6 @@ class Vortector:
                 self.calc_fit_difference_2D(vortex)
             except KeyError as e:
                 # print("Warning: KeyError encountered in calculating fit differences:", e)
-                pass
-
-    def calculate_contour_properties(self):
-        # Get the mass and vortensity inside the candidates
-
-        for c in self.candidates.values():
-            try:
-                self.calc_vortex_mass(c)
-                self.calc_vortensity(c)
-                self.calc_sigma(c)
-                self.calc_vortex_extent(c)
-                self.calc_vortensity_flux(c)
-                self.find_vortensity_min_position(c)
-                self.find_density_max_position(c)
-            except (ValueError, RuntimeError) as e:
-                # print("Warning: ValueError encountered in calculating vortex properties:", e)
                 pass
 
     def fit_gaussians(self, vortex):
@@ -292,126 +330,3 @@ class Vortector:
                 numvals*area)
             v["fits"][varname]["properties"][f"{region}_mass_fit"] = np.sum(
                 fitvals*area)
-
-    def calc_vortex_mass(self, c):
-        mask = c["mask"]
-        c["mass"] = np.sum(self.mass[mask])
-
-    def calc_vortensity(self, c):
-        mask = c["mask"]
-        c["vortensity_mean"] = np.mean(self.Vortensity[mask])
-        c["vortensity_median"] = np.median(self.Vortensity[mask])
-        c["vortensity_min"] = np.min(self.Vortensity[mask])
-        c["vortensity_max"] = np.max(self.Vortensity[mask])
-
-    def calc_sigma(self, c):
-        mask = c["mask"]
-        c["sigma_mean"] = np.mean(self.SurfaceDensity[mask])
-        c["sigma_median"] = np.median(self.SurfaceDensity[mask])
-        c["sigma_min"] = np.min(self.SurfaceDensity[mask])
-        c["sigma_max"] = np.max(self.SurfaceDensity[mask])
-
-    def calc_vortex_extent(self, c):
-        mask = c["mask"]
-        c["area"] = np.sum(self.Area[mask])
-        c["rmax"] = self.Xc[c["left"]]
-        c["rmin"] = self.Xc[c["right"]]
-        c["phimin"] = self.Yc[c["top"]]
-        c["phimax"] = self.Yc[c["bottom"]]
-        if c["phimax"] < c["phimin"]:
-            c["height"] = c["phimax"] + 2*np.pi - c["phimin"]
-        else:
-            c["height"] = c["phimax"] - c["phimin"]
-
-    def calc_vortensity_flux(self, c):
-        mask = c["mask"]
-        A = self.Area
-        c["vortensity_flux"] = np.sum((A*self.Vortensity)[mask])
-        c["vortensity_exp_flux"] = np.sum(
-            (A*np.exp(-self.Vortensity))[mask])
-
-    def find_vortensity_min_position(self, contour):
-        # Calculate the position of minimum vortensity
-        mask = np.logical_not(contour["mask"])
-        ind = np.argmin(np.ma.masked_array(
-            self.Vortensity, mask=mask), axis=None)
-        inds = np.unravel_index(ind, mask.shape)
-        x = self.Xc[inds]
-        y = self.Yc[inds]
-        contour["vortensity_min_pos"] = (x, y)
-        contour["vortensity_min_inds"] = inds
-        if self.verbose:
-            print(f"Location of minimum vortensity: (x,y) = ({x}, {y})")
-
-    def find_density_max_position(self, contour):
-        # Calculate the position of maximum density
-        mask = np.logical_not(contour["mask"])
-        ind = np.argmax(np.ma.masked_array(
-            self.SurfaceDensity, mask=mask), axis=None)
-        inds = np.unravel_index(ind, mask.shape)
-        x = self.Xc[inds]
-        y = self.Yc[inds]
-        contour["sigma_max_pos"] = (x, y)
-        contour["sigma_max_inds"] = inds
-        if self.verbose:
-            print(
-                f"Location of maximum surface density (x,y) = ({x}, {y})")
-
-    def sort_vortices_by_mass(self):
-        """ Sort the vortices by mass decending. """
-        self.vortices = [v for v in reversed(
-            sorted(self.vortices, key=lambda v: v["contour"]["mass"]))]
-
-    def print_properties(self, n=None):
-        if n is None:
-            n = len(self.candidates)
-        for k, vort in enumerate(self.candidates.values()):
-            if k >= n:
-                break
-            try:
-                for v in ["mass", "vortensity_min", "vortensity_median", "vortensity_mean", "vortensity_max"]:
-                    print(v, vort["contour"][v])
-                strength = np.exp(-vort["vortensity_median"])*vort["mass"]
-                print("strength", strength)
-            except KeyError:
-                pass
-            print()
-
-    def detect_vortex(self, include_mask=False, keep_internals=False):
-
-        self.candidates = detect_elliptic_contours(self.Vortensity,
-                                                   self.levels,
-                                                   self.max_ellipse_aspect_ratio,
-                                                   self.max_ellipse_deviation,
-                                                   self.verbose)
-
-        self.calculate_contour_properties()
-
-        self.vortices = []
-        for n, c in self.candidates.items():
-            self.vortices.append({"contour": c})
-
-        self.fit_contours()
-        self.remove_non_vortex_candidates()
-        self.remove_duplicates_by_min_vort_pos()
-
-        self.sort_vortices_by_mass()
-
-        if self.verbose:
-            self.print_properties()
-
-        self.remove_intermediate_data(include_mask, keep_internals)
-
-        return self.vortices
-
-    def remove_intermediate_data(self, include_mask=False, keep_internals=False):
-        for v in self.vortices:
-            c = v["contour"]
-            if not keep_internals:
-                for key in ["contour", "mask_extended", "bounding_hor",
-                            "bounding_vert", "pixel_arcLength", "pixel_area",
-                            "top_extended", "left_extended", "bottom_extended", "right_extended",
-                            "ancestors", "decendents"]:
-                    del c[key]
-            if not include_mask:
-                del c["mask"]
