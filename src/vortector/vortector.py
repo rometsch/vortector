@@ -2,40 +2,40 @@ import numpy as np
 
 from . import analyze
 from .gaussfit import gauss2D, Gauss2DFitter
-from .contours import detect_elliptic_contours
+from .contour import detect_elliptic_contours
 
 
 class Vortector:
-    def __init__(self, Xc, Yc, A, vortensity, Sigma,
+    def __init__(self, radius, azimuth, area, vortensity, surface_density,
                  levels=[float(x) for x in np.arange(-1, 1.5, 0.05)],
                  med=0.15, mear=np.inf, mvd=0.01, verbose=False, azimuthal_boundaries=[-np.pi, np.pi]):
 
-        self.Vortensity = vortensity
+        self.vortensity = vortensity
 
-        self.SurfaceDensity = Sigma
+        self.surface_density = surface_density
 
-        self.Xc = Xc
-        self.Yc = Yc
-        self.Area = A
+        self.radius = radius
+        self.azimuth = azimuth
+        self.area = area
 
         self.azimuthal_boundaries = azimuthal_boundaries
 
         # Parameters
         self.levels = levels
-        self.max_ellipse_deviation = med
-        self.max_ellipse_aspect_ratio = mear
-        self.min_vortensity_drop = mvd
+        self.med = med  # max_ellipse_deviation
+        self.mear = mear  # max_ellipse_aspect_ratio
+        self.mvd = mvd  # min_vortensity_drop
 
         self.verbose = verbose
 
-        self.mass = self.Area*self.SurfaceDensity
+        self.mass = self.area*self.surface_density
 
     def detect_vortices(self, include_mask=False, keep_internals=False):
 
-        self.candidates = detect_elliptic_contours(self.Vortensity,
+        self.candidates = detect_elliptic_contours(self.vortensity,
                                                    self.levels,
-                                                   self.max_ellipse_aspect_ratio,
-                                                   self.max_ellipse_deviation,
+                                                   self.mear,
+                                                   self.med,
                                                    self.verbose)
 
         self.calculate_contour_properties()
@@ -90,10 +90,10 @@ class Vortector:
                     no_min.append(n)
                     continue
                 vortensity_drop = c["vortensity_max"] - c["vortensity_min"]
-                if vortensity_drop < self.min_vortensity_drop:
+                if vortensity_drop < self.mvd:
                     if self.verbose:
                         print(
-                            f"Check candidates: excluding {cid} vortensity drop is {vortensity_drop} < {self.min_vortensity_drop}")
+                            f"Check candidates: excluding {cid} vortensity drop is {vortensity_drop} < {self.mvd}")
                     no_min.append(n)
             except KeyError:
                 # remove candiates causing errors
@@ -130,13 +130,14 @@ class Vortector:
         for c in self.candidates.values():
             try:
                 analyze.calc_vortex_mass(c, self.mass)
-                analyze.calc_vortensity(c, self.Vortensity)
-                analyze.calc_sigma(c, self.SurfaceDensity)
-                analyze.calc_vortex_extent(c, self.Area, self.Xc, self.Yc)
+                analyze.calc_vortensity(c, self.vortensity)
+                analyze.calc_sigma(c, self.surface_density)
+                analyze.calc_vortex_extent(
+                    c, self.area, self.radius, self.azimuth)
                 analyze.find_vortensity_min_position(
-                    c, self.Xc, self.Yc, self.Vortensity)
+                    c, self.radius, self.azimuth, self.vortensity)
                 analyze.find_density_max_position(
-                    c, self.Xc, self.Yc, self.SurfaceDensity)
+                    c, self.radius, self.azimuth, self.surface_density)
             except (ValueError, RuntimeError) as e:
                 # print("Warning: ValueError encountered in calculating vortex properties:", e)
                 pass
@@ -160,8 +161,8 @@ class Vortector:
         inds = contour["vortensity_min_inds"]
 
         def get_pos(inds):
-            r = self.Xc[inds]
-            phi = self.Yc[inds]
+            r = self.radius[inds]
+            phi = self.azimuth[inds]
             return (r, phi)
 
         top = get_pos(contour["top"])
@@ -173,16 +174,16 @@ class Vortector:
         mask_r = mask[:, inds[1]]
         mask_phi = mask[inds[0], :]
 
-        vals = self.SurfaceDensity
-        R = self.Xc[mask]
-        PHI = self.Yc[mask]
+        vals = self.surface_density
+        R = self.radius[mask]
+        PHI = self.azimuth[mask]
 
         Z = vals[mask]
         Z_r = vals[:, inds[1]]
         Z_phi = vals[inds[0], :]
 
-        r0 = self.Xc[inds]
-        phi0 = self.Yc[inds]
+        r0 = self.radius[inds]
+        phi0 = self.azimuth[inds]
 
         c_ref = np.average(Z_phi[np.logical_not(mask_phi)])
 
@@ -243,15 +244,15 @@ class Vortector:
         # for name, val, guess, low, up in zip(fitter.parameters, popt_rho, fitter.p0.values(), fitter.blow.values(), fitter.bup.values()):
         #     print(f"{name:5s} {val: .2e} ({guess: .2e}) [{low: .2e}, {up: .2e}]")
 
-        vals = self.Vortensity
-        R = self.Xc[mask]
-        PHI = self.Yc[mask]
+        vals = self.vortensity
+        R = self.radius[mask]
+        PHI = self.azimuth[mask]
         Z = vals[mask]
         Z_r = vals[:, inds[1]]
         Z_phi = vals[inds[0], :]
 
-        r0 = self.Xc[inds]
-        phi0 = self.Yc[inds]
+        r0 = self.radius[inds]
+        phi0 = self.azimuth[inds]
 
         if bottom[1] > top[1]:
             Z_up = Z[mask_up]
@@ -298,22 +299,22 @@ class Vortector:
             return gauss2D((r, phi), *popt)
 
         if varname == "surface_density":
-            vals = self.SurfaceDensity
+            vals = self.surface_density
         elif varname == "vortensity":
-            vals = self.Vortensity
+            vals = self.vortensity
         else:
             raise AttributeError(
                 f"Can't calculate fit difference in 2D for '{varname}'!")
 
-        R = self.Xc
-        PHI = self.Yc
+        R = self.radius
+        PHI = self.azimuth
         hr = sigma_r*np.sqrt(2*np.log(2))
         hphi = sigma_phi*np.sqrt(2*np.log(2))
 
         mc = v["contour"]["mask"]
         me = ((R-r0)/hr)**2 + ((PHI-phi0)/hphi)**2 <= 1
 
-        Ae = np.sum(self.Area[me])
+        Ae = np.sum(self.area[me])
         Ac = v["contour"]["area"]
         v["fits"][varname]["properties"] = dict()
         v["fits"][varname]["properties"]["ellipse_area_numerical"] = Ae

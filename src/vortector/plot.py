@@ -143,21 +143,21 @@ def show_fit_overview_2D(vt, n=0, axes=None, bnd_lines=False, bnd_pnts=False, sh
         ax.axis("off")
 
 
-def show_fit_overview_2D_single(vtec, varname, ax, bnd_lines=False,
+def show_fit_overview_2D_single(vt, varname, ax, bnd_lines=False,
                                 bnd_pnts=True, show_fits=True, fit_contours=True,
                                 cbar_axes=None):
     import matplotlib.patheffects as pe
-    Xc = vtec.Xc
-    Yc = vtec.Yc
+    Xc = vt.radius
+    Yc = vt.azimuth
 
     contour_colors = "darkgray"
     contour_lw = 0.5
     if varname == "vortensity":
         label = r"$\varpi/\varpi_0$"
 
-        levels = vtec.levels
+        levels = vt.levels
 
-        Z = vtec.Vortensity
+        Z = vt.vortensity
         cmap = "magma"
         norm = matplotlib.colors.Normalize(vmin=levels[0], vmax=levels[-1])
         img = ax.pcolormesh(
@@ -169,12 +169,12 @@ def show_fit_overview_2D_single(vtec, varname, ax, bnd_lines=False,
     elif varname == "surface_density":
         label = r"$\Sigma$"
 
-        Z = vtec.SurfaceDensity
+        Z = vt.surface_density
         cmap = "magma"
 
         try:
-            vmax = vtec.vortices[0]["fits"]["surface_density"]["c"] + \
-                vtec.vortices[0]["fits"]["surface_density"]["a"]
+            vmax = vt.vortices[0]["fits"]["surface_density"]["c"] + \
+                vt.vortices[0]["fits"]["surface_density"]["a"]
         except (KeyError, IndexError):
             vmax = np.max(Z)
 
@@ -189,9 +189,9 @@ def show_fit_overview_2D_single(vtec, varname, ax, bnd_lines=False,
         raise ValueError(
             f"{varname} not supported. Only 'vortensity' and 'sigma'.")
 
-    main_vortex = choose_main_vortex(vtec.vortices)
+    main_vortex = choose_main_vortex(vt.vortices)
 
-    vortices = [main_vortex] + [v for v in vtec.vortices if v != main_vortex]
+    vortices = [main_vortex] + [v for v in vt.vortices if v != main_vortex]
 
     for n, vort in enumerate(vortices):
         cnt = vort["contour"]
@@ -289,9 +289,9 @@ def select_fit_quantity(vt, key):
         Data array.
     """
     if key == "vortensity":
-        return vt.Vortensity
+        return vt.vortensity
     elif key == "surface_density":
-        return vt.SurfaceDensity
+        return vt.surface_density
     else:
         raise AttributeError(
             f"'{key}' is not a valid choice for a fit quantity.")
@@ -315,7 +315,7 @@ def vortex_mask_r(vt, c, hw):
         Mask indicating the vortex region.
     """
     wf = 1.5
-    r = vt.Xc[:, 0]
+    r = vt.radius[:, 0]
     mask = np.zeros(len(r), dtype=bool)
     cind = np.argmin(np.abs(r - c))
     lr = c - wf*hw
@@ -358,7 +358,7 @@ def show_radial_fit(vt, ax, key, n, ref="contour", center=None):
         mask = mask_r
 
         y = vals[:, inds[1]]
-        x = vt.Xc[:, 0]
+        x = vt.radius[:, 0]
 
         ax.plot(x, y, label=f"data slice n={n}")
         ax.plot(x[mask], y[mask], label="vortex region")
@@ -413,7 +413,7 @@ def show_azimuthal_fit(vt, ax, key, n, ref="contour", center=None):
         mask = mask_phi
 
         y = vals[inds[0], :]
-        x = vt.Yc[0, :]
+        x = vt.azimuth[0, :]
 
         ax.plot(x, y, label=f"data slice n={n}")
         plotper.plot_periodic(ax, x, y, mask, label="vortex region")
@@ -470,7 +470,7 @@ def vortex_mask_phi(vt, c, hw):
         Mask indicating the vortex region.
     """
     wf = 1.5
-    phi = vt.Yc[0, :]
+    phi = vt.azimuth[0, :]
     bnd = vt.azimuthal_boundaries
 
     mask = np.zeros(len(phi), dtype=bool)
@@ -521,8 +521,8 @@ def select_center_inds(vt, vortex, ref):
     else:
         raise AttributeError(
             f"'{ref}' is not a valid reference for fitting.")
-    rind = position_index(vt.Xc[:, 0], r0)
-    phiind = position_index(vt.Yc[0, :], phi0)
+    rind = position_index(vt.radius[:, 0], r0)
+    phiind = position_index(vt.azimuth[0, :], phi0)
     inds = (rind, phiind)
     return inds
 
