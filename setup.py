@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from setuptools import setup
+from setuptools import setup, find_namespace_packages
 
 setup(
     name="vortector",
@@ -8,7 +8,8 @@ setup(
     author="Thomas Rometsch",
     author_email="thomas.rometsch@uni-tuebingen.de",
     url="https://github.com/rometsch/vortector",
-    py_modules=["vortector"],
+    package_dir={'': 'src'},
+    packages=find_namespace_packages(where="src"),
     install_requires=[
         "numpy", "matplotlib", "opencv-python"
     ],

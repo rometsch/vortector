@@ -8,15 +8,13 @@ else
 	exit 1
 fi
 
-SRC_FILE="vortector.py"
-
 # get the scripts location and cd to it
 SCRIPT_DIR=$(python3 -c "import os; print(os.path.dirname(os.path.realpath('$0')))")
 cd $SCRIPT_DIR
 cd ..
 
-if [[ ! -e "$SRC_FILE" || ! -e "setup.py" ]]; then
-	echo "Could not find $SRC_FILE or setup.py. Make sure they exist!"
+if [[ ! -e "src" || ! -e "setup.py" ]]; then
+	echo "Could not find src dir or setup.py. Make sure they exist!"
 	exit 1
 fi
 CODENAME=$(python3 -c "import os; print(os.path.basename(os.path.realpath('.')))")
@@ -33,12 +31,12 @@ REMOTE_TMP_DIR="$REMOTE_TMP_DIR/$UUID-install-$CODENAME"
 echo "Deploying '$CODENAME' on '$HOST'"
 if [[ "$HOST" == "localhost" ]]; then
 	# copy files
-	rsync setup.py $SRC_FILE $REMOTE_TMP_DIR
+	rsync -r --exclude "src/*.egg-info" src setup.py $REMOTE_TMP_DIR
 	# install and clean up
 	sh -c "cd $REMOTE_TMP_DIR; python3 setup.py install --user; cd -; rm -rf $REMOTE_TMP_DIR" 1>/dev/null
 else
 	# copy files
-	rsync $SRC_FILE setup.py $HOST:$REMOTE_TMP_DIR
+	rsync -r --exclude "src/*.egg-info" src setup.py $HOST:$REMOTE_TMP_DIR
 	# install and clean up
 	ssh $HOST "cd $REMOTE_TMP_DIR; python3 setup.py install --user; cd -; rm -rf $REMOTE_TMP_DIR" 1>/dev/null
 fi
