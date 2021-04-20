@@ -1,7 +1,7 @@
 import numpy as np
 
 from .gaussfit import gauss2D, Gauss2DFitter
-from .detect import detect_elliptic_contours
+from .contours import detect_elliptic_contours
 
 
 class Vortector:
