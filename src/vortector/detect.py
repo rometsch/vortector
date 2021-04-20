@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 
+
 def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse_deviation, verbose=False):
     """ Detect closed equivalue lines in a 2D contour plot of the data.
 
@@ -27,21 +28,26 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     -------
     dict
         Dictionary of the candidate contours with information stored in dictionaries. 
-    """    
-    Nx, Ny, CNx, CNy, int_aspect, supersample = contour_image_dimensions(data.shape, verbose=verbose)
+    """
+    Nx, Ny, CNx, CNy, int_aspect, supersample = contour_image_dimensions(
+        data.shape, verbose=verbose)
     thresh = contour_image(CNx, CNy, data, levels)
 
     contours_largest, hierarchy = find_contours(thresh, verbose=verbose)
-    contours_closed = extract_closed_contours(thresh, contours_largest, max_ellipse_aspect_ratio, verbose=verbose)
+    contours_closed = extract_closed_contours(
+        thresh, contours_largest, max_ellipse_aspect_ratio, verbose=verbose)
 
-    candidates = extract_ellipse_contours(thresh, contours_closed, max_ellipse_deviation)
-    create_vortex_mask(candidates, supersample, Nx, Ny, int_aspect, verbose=verbose)
+    candidates = extract_ellipse_contours(
+        thresh, contours_closed, max_ellipse_deviation)
+    create_vortex_mask(candidates, supersample, Nx,
+                       Ny, int_aspect, verbose=verbose)
 
     generate_ancestors(candidates, hierarchy, verbose=verbose)
     generate_decendents(candidates, verbose=verbose)
     prune_candidates_by_hierarchy(candidates)
-    
+
     return candidates
+
 
 def contour_image_dimensions(img_shape, verbose=False):
 
@@ -73,12 +79,12 @@ def contour_image_dimensions(img_shape, verbose=False):
 
     return Nx, Ny, CNx, CNy, int_aspect, supersample
 
+
 def fig2rgb_array(fig):
     fig.canvas.draw()
     buf = fig.canvas.tostring_rgb()
     ncols, nrows = fig.canvas.get_width_height()
     return np.fromstring(buf, dtype=np.uint8).reshape(nrows, ncols, 3)
-
 
 
 def contour_image(CNx, CNy, vortensity, levels):
@@ -98,7 +104,7 @@ def contour_image(CNx, CNy, vortensity, levels):
     )
 
     ax.contour(vort_pe.transpose(),
-                levels=levels, linewidths=CNx/1000)
+               levels=levels, linewidths=CNx/1000)
 
     img_data = fig2rgb_array(fig)
     plt.close(fig)
@@ -108,6 +114,7 @@ def contour_image(CNx, CNy, vortensity, levels):
     _, thresh = cv2.threshold(img_data, 250, 255, 0)
 
     return thresh
+
 
 def find_contours(thresh, verbose=False):
     # Extract contours and construct hierarchy
@@ -119,7 +126,7 @@ def find_contours(thresh, verbose=False):
         print("Number of found contours:", len(contours))
 
     contours_dict = {n: {"contour": cnt, "opencv_contour_number": n}
-                        for n, cnt in enumerate(contours)}
+                     for n, cnt in enumerate(contours)}
 
     areas = [cv2.contourArea(c) for c in contours]
     for n, d in enumerate(contours_dict.values()):
@@ -129,8 +136,8 @@ def find_contours(thresh, verbose=False):
 
     # take the up to 100 largest patches
     contours_largest = [contours_dict[i]
-                                for i in [n for n in sort_inds[::-1]][:100]]
-    
+                        for i in [n for n in sort_inds[::-1]][:100]]
+
     return contours_largest, hierarchy
 
 
@@ -227,8 +234,9 @@ def extract_ellipse_contours(thresh, contours_closed, max_ellipse_deviation):
 
         contour["mask_extended"] = im_shape
         candidates[contour["opencv_contour_number"]] = contour
-        
+
     return candidates
+
 
 def create_vortex_mask(candidates, supersample, Nx, Ny, int_aspect, verbose=False):
     # Transform the image from ellipse fitting images back to match the grid
@@ -273,6 +281,7 @@ def create_vortex_mask(candidates, supersample, Nx, Ny, int_aspect, verbose=Fals
         print(
             f"Mapping mask: mask.shape = {mask.shape}, mask_orig.shape {mask_orig.shape}")
 
+
 def map_ext_pnt_to_orig(pnt, Nq):
     x = pnt[0]
     y = pnt[1]
@@ -305,7 +314,8 @@ def generate_ancestors(candidates, hierarchy, verbose=False):
         c["ancestors"] = ancestors
         if verbose:
             print("Ancestors:", c["opencv_contour_number"], ancestors)
-            
+
+
 def generate_decendents(candidates, verbose=False):
     # Construct decendents from ancestor list
     # This is done to avoid causing trouble when an intermediate contour is missing.
@@ -325,7 +335,8 @@ def generate_decendents(candidates, verbose=False):
         c["decendents"] = dec
         if verbose:
             print("Descendents:", c["opencv_contour_number"], dec)
-            
+
+
 def prune_candidates_by_hierarchy(candidates):
     # Remove children from candidates
 
