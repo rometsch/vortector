@@ -57,3 +57,70 @@ def find_density_max_position(contour, r, phi, surface_density):
     y = phi[inds]
     contour["surface_density_max_pos"] = (x, y)
     contour["surface_density_max_inds"] = inds
+
+
+def orbital_elements(r, phi, area, sigma, vrad, vphi, mu, mask=None):
+    """ Calculate mass-averaged semi-major axis and eccentricity for 2D data.
+    
+    A subregion of the domain can be selected by specifying a boolean mask.
+    
+    Parameters
+    ----------
+    r : np.array 2D 
+        Radius values as 2D array.
+    phi : np.array 2D 
+        Azimuth values as 2D array in radians.
+    area : np.array 2D 
+        Cell area values as 2D array.
+    sigma : np.array 2D 
+        Surface density values as 2D array.
+    vrad : np.array 2D 
+        Radial velocity values as 2D array.
+    vphi : np.array 2D 
+        Azimuth values as 2D array.
+    mu : float
+        Gravitational constant * stellar mass in the used unit system.
+    mask : np.array of type bool 2D, optional
+        2D array of boolean values indicating a subregion, by default None
+
+    Returns
+    -------
+    dict
+        Dictionary containing the semi-major axis ("a") and eccentricity ("e").
+    """
+    #mass of each cell
+    mass = sigma * area
+
+    #velocities in cartesian for each cell
+    vx = vrad*np.cos(phi) - vphi*np.sin(phi)
+    vy = vrad*np.sin(phi) + vphi*np.cos(phi)
+    
+    #cartesian coordinates
+    x  = r * np.cos(phi)
+    y  = r * np.sin(phi)
+
+    #specific angular momentum and speed squared
+    h2  = (x*vy - y*vx)**2
+    v2  = vx*vx + vy*vy
+
+    #smj axis from energy
+    eng = 0.5*v2 - mu/r
+    a   = -0.5*mu/eng
+    
+    #eccentricity
+    ecc = np.sqrt(1.0-h2/(mu*a))
+    
+    #weight by mass, calculate weighted eccentricity of each cell
+    if mask is None:
+        mask = np.ones(mass.shape, dtype=bool)
+        
+    mass = mass[mask]
+    a = a[mask]
+    ecc = ecc[mask]
+    
+    total_mass = np.sum(mass)
+    
+    weighted_a = np.sum(a*mass)/total_mass
+    weighted_ecc = np.sum(ecc*mass)/total_mass
+
+    return {"a" : weighted_a, "e" : weighted_ecc}
