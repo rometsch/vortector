@@ -273,24 +273,6 @@ def show_fit_overview_2D_single(vtec, varname, ax, bnd_lines=False,
     cbar.set_label(label)
 
 
-def clamp_periodic(x, azimuthal_boundaries):
-    """ Make sure a periodic quantity is inside the domain.
-
-    Parameters
-    ----------
-    x : float
-        Position.
-
-    Returns
-    -------
-    float
-        Position moved into the boundary values.
-    """
-    bnd = azimuthal_boundaries
-    rv = (x - bnd[0]) % (bnd[1]-bnd[0]) + bnd[0]
-    return rv
-
-
 def select_fit_quantity(vt, key):
     """ Return values by name.
 
@@ -437,7 +419,6 @@ def show_azimuthal_fit(vt, ax, key, n, ref="contour", center=None):
         plotper.plot_periodic(ax, x, y, mask, label="vortex region")
         y0 = c["fits"][key]["c"]
         x0 = c["fits"][key]["phi0"]
-        # x0 = clamp_periodic(x0)
         a = c["fits"][key]["a"]
         sig = c["fits"][key]["sigma_phi"]
 
@@ -458,7 +439,7 @@ def show_azimuthal_fit(vt, ax, key, n, ref="contour", center=None):
         xfull = np.linspace(x0-L/2, x0+L/2, endpoint=True)
         plotper.plot_periodic(ax, xfull, gauss(xfull, *popt), bnd=bnd,
                               ls="-", lw=1, color="C3", alpha=0.3)
-        ax.plot([clamp_periodic(x0, bnd)], y[[inds[1]]], "x")
+        ax.plot([plotper.clamp_periodic(x0, bnd)], y[[inds[1]]], "x")
     except KeyError as e:
         print(f"Warning: KeyError encountered in showing phi fit: {e}")
         return
@@ -494,9 +475,9 @@ def vortex_mask_phi(vt, c, hw):
 
     mask = np.zeros(len(phi), dtype=bool)
     cind = np.argmin(np.abs(phi - c))
-    lphi = clamp_periodic(c - wf*hw, bnd)
+    lphi = plotper.clamp_periodic(c - wf*hw, bnd)
     lind = np.argmin(np.abs(phi - lphi))
-    uphi = clamp_periodic(c + wf*hw, bnd)
+    uphi = plotper.clamp_periodic(c + wf*hw, bnd)
     uind = np.argmin(np.abs(phi - uphi))
     mask = np.zeros(len(phi), dtype=bool)
     if c + wf*hw > bnd[1] or c - wf*hw < bnd[0]:

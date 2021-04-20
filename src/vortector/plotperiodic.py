@@ -113,6 +113,24 @@ def combine_periodic(x, y, m, bnd=(-np.pi, np.pi)):
         return x[m], y[m]
 
 
+def clamp_periodic(x, azimuthal_boundaries):
+    """ Make sure a periodic quantity is inside the domain.
+
+    Parameters
+    ----------
+    x : float
+        Position.
+
+    Returns
+    -------
+    float
+        Position moved into the boundary values.
+    """
+    bnd = azimuthal_boundaries
+    rv = (x - bnd[0]) % (bnd[1]-bnd[0]) + bnd[0]
+    return rv
+
+
 def plot_ellipse_periodic(ax, x, y, w, h, crosshair=False, bnd=(-np.pi, np.pi), **kwargs):
     """ Show an Ellipse in a plot periodic in y direction.
 
