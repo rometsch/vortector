@@ -2,6 +2,72 @@ import numpy as np
 import astropy
 import astropy.units as u
 
+def calc_quantities(simulation, Noutput, normalize_by = "initial"):
+    M_star = 1*u.solMass
+    rho = simulation.fluids["gas"].get("2d", "mass density", Noutput)
+    r = rho.grid.get_centers("r")
+    phi = rho.grid.get_interfaces("phi")
+    phi = map_angles(phi.to_value("rad"))
+    if np.isclose(phi[-1],-np.pi):
+        phi[-1] = np.pi
+    phi = phi*u.rad
+    PHI_rho, R_rho = np.meshgrid(phi, r)
+    x_rho = R_rho*np.cos(PHI_rho)
+    y_rho = R_rho*np.sin(PHI_rho)
+    phi_c = rho.grid.get_centers("phi")
+    phi_c = map_angles((phi_c).to_value("rad"))
+    if phi_c[-1] == 0.0:
+        phi_c[-1] = 2*np.pi
+    phi_c = phi_c*u.rad
+    PHI_c, R_c = np.meshgrid(phi_c, r)
+    xc = R_c*np.cos(PHI_c)
+    yc = R_c*np.sin(PHI_c)
+
+    dr = rho.grid.get_sizes("r").to_value("au")
+    dphi = rho.grid.get_sizes("phi").to_value("rad")
+    DPHI, DR = np.meshgrid(dphi, dr)
+
+    Rho_background = simulation.fluids["gas"].get("2d", "mass density", 0).data.to_value("solMass/au2")
+    Rho = simulation.fluids["gas"].get("2d", "mass density", Noutput).data.to_value("solMass/au2")
+    
+    vorticity = vorticity_simdata(simulation, Noutput)
+    Omega_Kepler = np.sqrt(astropy.constants.G * M_star / R_c**3).decompose()
+    vorticity_Kepler = (0.5*Omega_Kepler).to_value("1/s")
+    vorticity = vorticity.to_value(1/u.s)
+
+    if normalize_by == "initial":
+        vortensity = vorticity/Rho * Rho_background / vorticity_Kepler
+    elif normalize_by == "median":
+        vortensity = vorticity/Rho
+        vortensity_med = np.median(vortensity, axis=1)
+        vortensity = vortensity/np.tile(vortensity_med,(vortensity.shape[1], 1)).T
+    elif normalize_by == "avg":
+        vortensity = vorticity/Rho
+        vortensity_avg = np.average(vortensity, axis=1)
+        vortensity = vortensity/np.tile(vortensity_avg,(vortensity.shape[1], 1)).T
+    else:
+        raise ValueError(f"Invalid choice for vortensity normalization: '{normalize_by}'")
+    
+#     vortensity[vortensity < -1] = -1
+
+    X = R_rho.to_value("au")
+    Y = PHI_rho.to_value("rad")
+    Xc = R_c.to_value("au")
+    Yc = PHI_c.to_value("rad")
+    R = Xc
+    A = DR*R*DPHI
+
+    N_roll = -np.argmax(phi[1:] - phi[:-1] < 0)
+    X = np.roll(X, N_roll, axis=1)
+    Y = np.roll(Y, N_roll, axis=1)
+    Xc = np.roll(Xc, N_roll, axis=1)
+    Yc = np.roll(Yc, N_roll, axis=1)
+    vorticity = np.roll(vorticity, N_roll, axis=1)
+    vortensity = np.roll(vortensity, N_roll, axis=1)
+    Rho = np.roll(Rho, N_roll, axis=1)
+    Rho_background = np.roll(Rho_background, N_roll, axis=1)
+    return X, Y, Xc, Yc, A, vortensity, vorticity, Rho, Rho_background
+
 def map_angles(phi, phi_min=-np.pi):
     """ Map angles to the range [phi_min, phi_min + 2pi]
 
@@ -135,3 +201,5 @@ def velocity_cartesian_simdata(data, Noutput):
     vy = vrad_c*np.sin(PHI) + vazi_c*np.cos(PHI)
 
     return (x, y, vx, vy)
+
+
