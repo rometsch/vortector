@@ -1,1 +1,1 @@
-from vortector import Vortector
+from .vortector import Vortector
