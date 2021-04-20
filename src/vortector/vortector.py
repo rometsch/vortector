@@ -676,11 +676,6 @@ class Vortector:
 
         return self.vortices
 
-    def show_contours(self):
-        """ Plot the contour image. """
-        _, ax = plt.subplots()
-        ax.imshow(self.thresh)
-
     def remove_intermediate_data(self, include_mask=False, keep_internals=False):
         for v in self.vortices:
             c = v["contour"]

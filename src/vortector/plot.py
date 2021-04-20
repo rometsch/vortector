@@ -471,7 +471,7 @@ def show_azimuthal_fit(vt, ax, key, n, ref="contour", center=None):
     ax.grid()
 
 
-def vortex_mask_phi(c, hw):
+def vortex_mask_phi(vt, c, hw):
     """ Construct a azimuthal vortex mask from center and width value.
 
     This function takes the periodic boundary into account.
@@ -489,15 +489,16 @@ def vortex_mask_phi(c, hw):
         Mask indicating the vortex region.
     """
     wf = 1.5
-    phi = Yc[0, :]
+    phi = vt.Yc[0, :]
+    bnd = vt.azimuthal_boundaries
+
     mask = np.zeros(len(phi), dtype=bool)
     cind = np.argmin(np.abs(phi - c))
-    lphi = clamp_periodic(c - wf*hw)
+    lphi = clamp_periodic(c - wf*hw, bnd)
     lind = np.argmin(np.abs(phi - lphi))
-    uphi = clamp_periodic(c + wf*hw)
+    uphi = clamp_periodic(c + wf*hw, bnd)
     uind = np.argmin(np.abs(phi - uphi))
     mask = np.zeros(len(phi), dtype=bool)
-    bnd = azimuthal_boundaries
     if c + wf*hw > bnd[1] or c - wf*hw < bnd[0]:
         mask[lind:] = True
         mask[:uind+1] = True
@@ -577,10 +578,10 @@ def select_fit_region(vt, vortex, ref):
     elif ref in ["vortensity", "surface_density"]:
         center = vortex["fits"][ref]["r0"]
         hw = vortex["fits"][ref]["sigma_r"]
-        mask_r = vortex_mask_r(center, hw)
+        mask_r = vortex_mask_r(vt, center, hw)
         center = vortex["fits"][ref]["phi0"]
         hw = vortex = vortex["fits"][ref]["sigma_phi"]
-        mask_phi = vortex_mask_phi(center, hw)
+        mask_phi = vortex_mask_phi(vt, center, hw)
     else:
         raise AttributeError(
             f"'{ref}' is not a valid reference for fitting.")
