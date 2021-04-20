@@ -10,15 +10,15 @@ class Vortector:
                  levels=[float(x) for x in np.arange(-1, 1.5, 0.05)],
                  med=0.15, mear=np.inf, mvd=0.01, verbose=False, azimuthal_boundaries=[-np.pi, np.pi]):
 
-        self.vortensity = vortensity
+        self.Vortensity = vortensity
 
-        self.Sigma = Sigma
+        self.SurfaceDensity = Sigma
 
         self.Rc = Xc
         self.Xc = Xc
         self.Phic = Yc
         self.Yc = Yc
-        self.cell_area = A
+        self.Area = A
 
         self.azimuthal_boundaries = azimuthal_boundaries
 
@@ -32,7 +32,7 @@ class Vortector:
 
     def contour_image_dimensions(self):
 
-        vortensity = self.vortensity
+        vortensity = self.Vortensity
         self.Nx, self.Ny = vortensity.shape
         self.int_aspect = int(np.max([self.Nx/self.Ny, self.Ny/self.Nx]))
 
@@ -67,7 +67,7 @@ class Vortector:
         fig.add_axes(ax)
 
         # periodically extend vortensity
-        vort = self.vortensity
+        vort = self.Vortensity
         Hhalf = int(vort.shape[1]/2)
         vort_pe = np.concatenate(
             [vort[:, Hhalf:],
@@ -244,7 +244,7 @@ class Vortector:
                 f"Mapping mask: mask.shape = {mask.shape}, mask_orig.shape {mask_orig.shape}")
 
     def calc_cell_masses(self):
-        self.mass = self.cell_area*self.Sigma
+        self.mass = self.Area*self.SurfaceDensity
 
     def generate_ancestors(self):
         # Generate ancestor list
@@ -386,7 +386,7 @@ class Vortector:
         mask_r = mask[:, inds[1]]
         mask_phi = mask[inds[0], :]
 
-        vals = self.Sigma
+        vals = self.SurfaceDensity
         R = self.Xc[mask]
         PHI = self.Yc[mask]
 
@@ -456,7 +456,7 @@ class Vortector:
         # for name, val, guess, low, up in zip(fitter.parameters, popt_rho, fitter.p0.values(), fitter.blow.values(), fitter.bup.values()):
         #     print(f"{name:5s} {val: .2e} ({guess: .2e}) [{low: .2e}, {up: .2e}]")
 
-        vals = self.vortensity
+        vals = self.Vortensity
         R = self.Xc[mask]
         PHI = self.Yc[mask]
         Z = vals[mask]
@@ -512,9 +512,9 @@ class Vortector:
             return gauss2D((r, phi), *popt)
 
         if varname == "sigma":
-            vals = self.Sigma
+            vals = self.SurfaceDensity
         elif varname == "vortensity":
-            vals = self.vortensity
+            vals = self.Vortensity
         else:
             raise AttributeError(
                 f"Can't calculate fit difference in 2D for '{varname}'!")
@@ -527,7 +527,7 @@ class Vortector:
         mc = c["mask"]
         me = ((R-r0)/hr)**2 + ((PHI-phi0)/hphi)**2 <= 1
 
-        Ae = np.sum(self.cell_area[me])
+        Ae = np.sum(self.Area[me])
         Ac = c["area"]
         c[f"{varname}_fit_2D_ellipse_area_numerical"] = Ae
         c[f"{varname}_fit_2D_area_ratio_ellipse_to_contour"] = Ae/Ac
@@ -549,21 +549,21 @@ class Vortector:
 
     def calc_vortensity(self, c):
         mask = c["mask"]
-        c["vortensity_mean"] = np.mean(self.vortensity[mask])
-        c["vortensity_median"] = np.median(self.vortensity[mask])
-        c["vortensity_min"] = np.min(self.vortensity[mask])
-        c["vortensity_max"] = np.max(self.vortensity[mask])
+        c["vortensity_mean"] = np.mean(self.Vortensity[mask])
+        c["vortensity_median"] = np.median(self.Vortensity[mask])
+        c["vortensity_min"] = np.min(self.Vortensity[mask])
+        c["vortensity_max"] = np.max(self.Vortensity[mask])
 
     def calc_sigma(self, c):
         mask = c["mask"]
-        c["sigma_mean"] = np.mean(self.Sigma[mask])
-        c["sigma_median"] = np.median(self.Sigma[mask])
-        c["sigma_min"] = np.min(self.Sigma[mask])
-        c["sigma_max"] = np.max(self.Sigma[mask])
+        c["sigma_mean"] = np.mean(self.SurfaceDensity[mask])
+        c["sigma_median"] = np.median(self.SurfaceDensity[mask])
+        c["sigma_min"] = np.min(self.SurfaceDensity[mask])
+        c["sigma_max"] = np.max(self.SurfaceDensity[mask])
 
     def calc_vortex_extent(self, c):
         mask = c["mask"]
-        c["area"] = np.sum(self.cell_area[mask])
+        c["area"] = np.sum(self.Area[mask])
         c["rmax"] = self.Xc[c["left"]]
         c["rmin"] = self.Xc[c["right"]]
         c["phimin"] = self.Yc[c["top"]]
@@ -575,16 +575,16 @@ class Vortector:
 
     def calc_vortensity_flux(self, c):
         mask = c["mask"]
-        A = self.cell_area
-        c["vortensity_flux"] = np.sum((A*self.vortensity)[mask])
+        A = self.Area
+        c["vortensity_flux"] = np.sum((A*self.Vortensity)[mask])
         c["vortensity_exp_flux"] = np.sum(
-            (A*np.exp(-self.vortensity))[mask])
+            (A*np.exp(-self.Vortensity))[mask])
 
     def find_vortensity_min_position(self, contour):
         # Calculate the position of minimum vortensity
         mask = np.logical_not(contour["mask"])
         ind = np.argmin(np.ma.masked_array(
-            self.vortensity, mask=mask), axis=None)
+            self.Vortensity, mask=mask), axis=None)
         inds = np.unravel_index(ind, mask.shape)
         x = self.Xc[inds]
         y = self.Yc[inds]
@@ -597,7 +597,7 @@ class Vortector:
         # Calculate the position of maximum density
         mask = np.logical_not(contour["mask"])
         ind = np.argmax(np.ma.masked_array(
-            self.Sigma, mask=mask), axis=None)
+            self.SurfaceDensity, mask=mask), axis=None)
         inds = np.unravel_index(ind, mask.shape)
         x = self.Xc[inds]
         y = self.Yc[inds]
@@ -812,7 +812,7 @@ class Vortector:
 
             levels = self.levels
 
-            Z = self.vortensity
+            Z = self.Vortensity
             cmap = "magma"
             norm = colors.Normalize(vmin=levels[0], vmax=levels[-1])
             img = ax.pcolormesh(
@@ -824,7 +824,7 @@ class Vortector:
         elif varname == "sigma":
             label = r"$\Sigma$"
 
-            Z = self.Sigma
+            Z = self.SurfaceDensity
             cmap = "magma"
 
             try:
@@ -958,9 +958,9 @@ class Vortector:
             Data array.
         """
         if key == "vortensity":
-            return self.vortensity
+            return self.Vortensity
         elif key == "sigma":
-            return self.Sigma
+            return self.SurfaceDensity
         else:
             raise AttributeError(
                 f"'{key}' is not a valid choice for a fit quantity.")
