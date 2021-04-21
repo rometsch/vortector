@@ -43,6 +43,21 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     generate_ancestors(contours, hierarchy, verbose=verbose)
     generate_descendants(contours, verbose=verbose)
     prune_candidates_by_hierarchy(contours)
+    
+    parameters = {
+        "Nx" : Nx,
+        "Ny" : Ny,
+        "CNx" : CNx,
+        "CNy" : CNy,
+        "int_aspect" : int_aspect,
+        "supersample" : supersample,
+        "max_ellipse_aspect_ratio" : max_ellipse_aspect_ratio,
+        "max_ellipse_deviation" : max_ellipse_deviation,
+        "levels" : [float(x) for x in levels]
+    }
+    
+    for contour in contours.values():
+        contour["parameters"] = parameters
 
     candidates = [{"detection": contour} for contour in contours.values()]
     create_vortex_mask(candidates, supersample, Nx,
