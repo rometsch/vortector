@@ -49,13 +49,13 @@ class Vortector:
         for c in self.candidates:
             self.vortices.append({"contour": c})
 
-        self.fit_contours()
+        self.fit_gaussians()
         self.remove_non_vortex_candidates()
         self.remove_duplicates_by_min_vort_pos()
 
         self.sort_vortices_by_mass()
 
-        # self.remove_intermediate_data(include_mask, keep_internals)
+        self.remove_intermediate_data(include_mask, keep_internals)
 
         return self.vortices
 
@@ -66,13 +66,9 @@ class Vortector:
 
     def remove_intermediate_data(self, include_mask=False, keep_internals=False):
         for v in self.vortices:
-            c = v["contour"]
             if not keep_internals:
-                for key in ["contour", "mask_extended", "bounding_hor",
-                            "bounding_vert", "pixel_arcLength", "pixel_area",
-                            "top_extended", "left_extended", "bottom_extended", "right_extended",
-                            "ancestors", "decendents"]:
-                    del c[key]
+                del v["contour"]["detection"]["boundary"]
+                del v["contour"]["detection"]["mask_extended"]
             if not include_mask:
                 del c["mask"]
 
@@ -145,12 +141,14 @@ class Vortector:
                     c, self.radius, self.azimuth, self.vortensity)
                 analyze.find_density_max_position(
                     c, self.radius, self.azimuth, self.surface_density)
+                analyze.calc_azimuthal_statistics(
+                    c["stats"], self.surface_density, self.vortensity)
             except (ValueError, RuntimeError) as e:
                 print(
                     "Warning: ValueError encountered in calculating vortex properties:", e)
                 pass
 
-    def fit_contours(self):
+    def fit_gaussians(self):
         for vortex in self.vortices:
             try:
                 fit = fit_2D_gaussian_vortensity(
@@ -169,7 +167,6 @@ class Vortector:
                     "surface_density_max_inds",
                     periodicity=self.periodicity)
                 vortex["fits"]["surface_density"] = fit
-                # self.fit_gaussians(vortex)
             except (ValueError, RuntimeError) as e:
                 print(
                     "Warning: ValueError encountered in calculating vortex properties:", e)

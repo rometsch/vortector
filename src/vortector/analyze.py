@@ -9,8 +9,8 @@ def calc_vortex_mass(c, mass):
 def calc_vortensity(c, vortensity):
     mask = c["mask"]
     s = c["stats"]
-    s["vortensity_mean"] = np.mean(vortensity[mask])
-    s["vortensity_median"] = np.median(vortensity[mask])
+    s["vortensity_avg"] = np.mean(vortensity[mask])
+    s["vortensity_med"] = np.median(vortensity[mask])
     s["vortensity_min"] = np.min(vortensity[mask])
     s["vortensity_max"] = np.max(vortensity[mask])
 
@@ -18,8 +18,8 @@ def calc_vortensity(c, vortensity):
 def calc_sigma(c, surface_density):
     mask = c["mask"]
     s = c["stats"]
-    s["surface_density_mean"] = np.mean(surface_density[mask])
-    s["surface_density_median"] = np.median(surface_density[mask])
+    s["surface_density_avg"] = np.mean(surface_density[mask])
+    s["surface_density_med"] = np.median(surface_density[mask])
     s["surface_density_min"] = np.min(surface_density[mask])
     s["surface_density_max"] = np.max(surface_density[mask])
 
@@ -60,6 +60,24 @@ def find_density_max_position(contour, r, phi, surface_density):
     y = phi[inds]
     contour["stats"]["surface_density_max_pos"] = (x, y)
     contour["stats"]["surface_density_max_inds"] = inds
+
+
+def calc_azimuthal_statistics(stats, surface_density, vortensity):
+    """ Calculate statistics along the azimuthal direction at the location
+    of vortensity minimum and surface density maximum."""
+    inds = stats["vortensity_min_inds"]
+    stats["azimuthal_at_vortensity_min"] = {
+        "vortensity_max": np.max(vortensity[inds[0], :]),
+        "vortensity_avg": np.mean(vortensity[inds[0], :]),
+        "vortensity_med": np.median(vortensity[inds[0], :])
+    }
+
+    inds = stats["surface_density_max_inds"]
+    stats["azimuthal_at_surface_density_max"] = {
+        "surface_density_min": np.max(surface_density[inds[0], :]),
+        "surface_density_avg": np.mean(surface_density[inds[0], :]),
+        "surface_density_med": np.median(surface_density[inds[0], :])
+    }
 
 
 def calc_orbital_elements_vortector(vt, n, vrad, vphi, mu, region="contour"):
