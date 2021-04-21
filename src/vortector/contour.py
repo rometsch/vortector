@@ -43,7 +43,7 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
                        Ny, int_aspect, verbose=verbose)
 
     generate_ancestors(candidates, hierarchy, verbose=verbose)
-    generate_decendents(candidates, verbose=verbose)
+    generate_descendants(candidates, verbose=verbose)
     prune_candidates_by_hierarchy(candidates)
 
     return candidates
@@ -125,7 +125,7 @@ def find_contours(thresh, verbose=False):
     if verbose:
         print("Number of found contours:", len(contours))
 
-    contours_dict = {n: {"contour": cnt, "opencv_contour_number": n}
+    contours_dict = {n: {"boundary": cnt, "opencv_contour_number": n}
                      for n, cnt in enumerate(contours)}
 
     areas = [cv2.contourArea(c) for c in contours]
@@ -146,7 +146,7 @@ def extract_closed_contours(thresh, contours_largest, max_ellipse_aspect_ratio, 
 
     contours_closed = []
     for n, contour in enumerate(contours_largest):
-        cnt = contour["contour"]
+        cnt = contour["boundary"]
         l = cv2.arcLength(cnt, True)
         contour["pixel_arcLength"] = l
         a = contour["pixel_area"]
@@ -215,7 +215,7 @@ def extract_ellipse_contours(thresh, contours_closed, max_ellipse_deviation):
 
     candidates = dict()
     for contour in contours_closed:
-        cnt = contour["contour"]
+        cnt = contour["boundary"]
         ellipse = cv2.fitEllipse(cnt)
 
         im_shape = np.zeros(thresh.shape)
@@ -316,23 +316,23 @@ def generate_ancestors(candidates, hierarchy, verbose=False):
             print("Ancestors:", c["opencv_contour_number"], ancestors)
 
 
-def generate_decendents(candidates, verbose=False):
-    # Construct decendents from ancestor list
+def generate_descendants(candidates, verbose=False):
+    # Construct descendants from ancestor list
     # This is done to avoid causing trouble when an intermediate contour is missing.
 
-    decendents = {}
+    descendants = {}
     for c in candidates.values():
         ancestors = c["ancestors"]
         for k, n in enumerate(ancestors):
-            if not n in decendents or len(decendents[n]) < k:
-                decendents[n] = [i for i in reversed(ancestors[:k])]
+            if not n in descendants or len(descendants[n]) < k:
+                descendants[n] = [i for i in reversed(ancestors[:k])]
 
     for c in candidates.values():
-        if c["opencv_contour_number"] in decendents:
-            dec = decendents[c["opencv_contour_number"]]
+        if c["opencv_contour_number"] in descendants:
+            dec = descendants[c["opencv_contour_number"]]
         else:
             dec = []
-        c["decendents"] = dec
+        c["descendants"] = dec
         if verbose:
             print("Descendents:", c["opencv_contour_number"], dec)
 
@@ -340,9 +340,9 @@ def generate_decendents(candidates, verbose=False):
 def prune_candidates_by_hierarchy(candidates):
     # Remove children from candidates
 
-    decendents = []
+    descendants = []
     for c in candidates.values():
-        decendents += c["decendents"].copy()
-    decendents = set(decendents)
-    for n in decendents:
+        descendants += c["descendants"].copy()
+    descendants = set(descendants)
+    for n in descendants:
         del candidates[n]
