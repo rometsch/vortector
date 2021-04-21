@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors
 
-from . import plotperiodic as plotper
 from .gaussfit import gauss
 
 
@@ -233,10 +232,10 @@ def show_fit_overview_2D_single(vt, varname, ax, bnd_lines=False,
                 color_vortensity = "C0"
                 lw = 1
                 if n == 0:
-                    plotper.plot_ellipse_periodic(
+                    plot_ellipse_periodic(
                         ax, r0, phi0, w, h, crosshair=True, color=color_vortensity, ls="-", lw=lw, path_effects=path_effects)
                 else:
-                    plotper.plot_ellipse_periodic(
+                    plot_ellipse_periodic(
                         ax, r0, phi0, w, h, color=color_vortensity, ls="-", lw=lw)
 
                 r0 = vort["fits"]["surface_density"]["r0"]
@@ -248,10 +247,10 @@ def show_fit_overview_2D_single(vt, varname, ax, bnd_lines=False,
                 h = 2*np.sqrt(2*np.log(2))*sigma_phi
 
                 if n == 0:
-                    plotper.plot_ellipse_periodic(
+                    plot_ellipse_periodic(
                         ax, r0, phi0, w, h, color="C2", ls="-", lw=lw, crosshair=True, path_effects=path_effects)
                 else:
-                    plotper.plot_ellipse_periodic(
+                    plot_ellipse_periodic(
                         ax, r0, phi0, w, h, color="C2", ls="-", lw=lw)
             except KeyError:
                 pass
@@ -416,7 +415,7 @@ def show_azimuthal_fit(vt, ax, key, n, ref="contour", center=None):
         x = vt.azimuth[0, :]
 
         ax.plot(x, y, label=f"data slice n={n}")
-        plotper.plot_periodic(ax, x, y, mask, label="vortex region")
+        plot_periodic(ax, x, y, mask, label="vortex region")
         y0 = c["fits"][key]["c"]
         x0 = c["fits"][key]["phi0"]
         a = c["fits"][key]["a"]
@@ -425,7 +424,7 @@ def show_azimuthal_fit(vt, ax, key, n, ref="contour", center=None):
         bnd = vt.azimuthal_boundaries
         L = bnd[1] - bnd[0]
 
-        xc, yc = plotper.combine_periodic(x, y, mask)
+        xc, yc = combine_periodic(x, y, mask)
 
         if x0 < np.min(xc):
             x0 += L
@@ -433,13 +432,13 @@ def show_azimuthal_fit(vt, ax, key, n, ref="contour", center=None):
             x0 -= L
         popt = [y0, a, x0, sig]
 
-        plotper.plot_periodic(ax, xc, gauss(xc, *popt), bnd=bnd,
-                              ls="--", lw=2, color="C2", label=f"fit")
+        plot_periodic(ax, xc, gauss(xc, *popt), bnd=bnd,
+                      ls="--", lw=2, color="C2", label=f"fit")
 
         xfull = np.linspace(x0-L/2, x0+L/2, endpoint=True)
-        plotper.plot_periodic(ax, xfull, gauss(xfull, *popt), bnd=bnd,
-                              ls="-", lw=1, color="C3", alpha=0.3)
-        ax.plot([plotper.clamp_periodic(x0, bnd)], y[[inds[1]]], "x")
+        plot_periodic(ax, xfull, gauss(xfull, *popt), bnd=bnd,
+                      ls="-", lw=1, color="C3", alpha=0.3)
+        ax.plot([clamp_periodic(x0, bnd)], y[[inds[1]]], "x")
     except KeyError as e:
         print(f"Warning: KeyError encountered in showing phi fit: {e}")
         return
@@ -475,9 +474,9 @@ def vortex_mask_phi(vt, c, hw):
 
     mask = np.zeros(len(phi), dtype=bool)
     cind = np.argmin(np.abs(phi - c))
-    lphi = plotper.clamp_periodic(c - wf*hw, bnd)
+    lphi = clamp_periodic(c - wf*hw, bnd)
     lind = np.argmin(np.abs(phi - lphi))
-    uphi = plotper.clamp_periodic(c + wf*hw, bnd)
+    uphi = clamp_periodic(c + wf*hw, bnd)
     uind = np.argmin(np.abs(phi - uphi))
     mask = np.zeros(len(phi), dtype=bool)
     if c + wf*hw > bnd[1] or c - wf*hw < bnd[0]:
@@ -612,3 +611,191 @@ def position_index(x, x0):
         Index of position x0.
     """
     return int(np.argmin(np.abs(x-x0)))
+
+
+def plot_periodic(ax, x, y, m=None, bnd=(-np.pi, np.pi), **kwargs):
+    if m is not None:
+        plot_periodic_mask(ax, x, y, m, **kwargs)
+        return
+    L = bnd[1] - bnd[0]
+    m = np.logical_and(x <= bnd[1], x >= bnd[0])
+    line, = ax.plot(x[m], y[m], **kwargs)
+    kwa = kwargs.copy()
+    kwa["color"] = line.get_color()
+    kwa["ls"] = line.get_linestyle()
+
+    m = x < bnd[0]
+    line, = ax.plot(x[m] + L, y[m], **kwa)
+    line.set_label(None)
+
+    m = x > bnd[1]
+    line, = ax.plot(x[m] - L, y[m], **kwa)
+    line.set_label(None)
+
+
+def plot_vline_periodic(ax, x, y, dy, **kwargs):
+    bup = np.pi
+    blow = -np.pi
+    L = bup - blow
+    y = (y-blow) % L + blow
+
+    at_upper_bnd = y + dy > bup
+    at_lower_bnd = y - dy < blow
+    if at_upper_bnd:
+        line, = ax.plot([x, x], [y-dy, bup], **kwargs)
+        c = line.get_color()
+        ls = line.get_linestyle()
+        lw = line.get_linewidth()
+        ax.plot([x, x], [blow, y-L+dy], ls=ls, lw=lw, c=c)
+    elif at_lower_bnd:
+        line, = ax.plot([x, x], [y+dy, blow], **kwargs)
+        c = line.get_color()
+        ls = line.get_linestyle()
+        lw = line.get_linewidth()
+        ax.plot([x, x], [bup, y+L-dy], ls=ls, lw=lw, c=c)
+    else:
+        ax.plot([x, x], [y-dy, y+dy], **kwargs)
+
+
+def plot_periodic_mask(ax, x, y, m, **kwargs):
+    #     print(m)
+    if m[0] and m[-1] and not all(m):
+        bnd = np.where(m == False)[0][0]
+        xl = x[:bnd]
+        yl = y[:bnd]
+        line, = ax.plot(xl, yl, **kwargs)
+        bnd = np.where(m == False)[0][-1]
+#         print(len(x))
+#         print(bnd)
+        xr = x[bnd:]
+        yr = y[bnd:]
+        kwa = kwargs.copy()
+        kwa["color"] = line.get_color()
+        kwa["ls"] = line.get_linestyle()
+        line, = ax.plot(xr, yr, **kwa)
+        line.set_label(None)
+    else:
+        ax.plot(x[m], y[m], **kwargs)
+
+
+def combine_periodic(x, y, m, bnd=(-np.pi, np.pi)):
+    """ Combine an array split at a periodic boundary. 
+
+    This is used for vortices that stretch over the periodic boundary
+    in azimuthal directions in disks.
+    The x values at the left boundary are appended to the right of the
+    values at the right boundary and the periodicity is added.
+
+    The following sketch shows how the arrays are combined.
+
+    |+++++_________xxx|
+    to
+    |______________xxx|+++++
+
+    Parameters
+    ----------
+    x: array
+        Coordinate values (full domain).
+    y: array
+        Values (full domain).
+    m: array (boolean)
+        Mask to select the active values.
+    bnd: tuple of two float
+        Position of the left and right boundary.
+
+    Returns
+    -------
+    x : array
+        coordinates
+    y : array
+        values
+    """
+    lb, rb = bnd
+    if m[0] and m[-1] and not all(m):
+        b = np.where(m == False)[0][0]
+        xl = x[:b]
+        yl = y[:b]
+        b = np.where(m == False)[0][-1]
+        xr = x[b:]
+        yr = y[b:]
+        xcom = np.append(xr, xl+(rb-lb))
+        ycom = np.append(yr, yl)
+        return xcom, ycom
+    else:
+        return x[m], y[m]
+
+
+def clamp_periodic(x, azimuthal_boundaries):
+    """ Make sure a periodic quantity is inside the domain.
+
+    Parameters
+    ----------
+    x : float
+        Position.
+
+    Returns
+    -------
+    float
+        Position moved into the boundary values.
+    """
+    bnd = azimuthal_boundaries
+    rv = (x - bnd[0]) % (bnd[1]-bnd[0]) + bnd[0]
+    return rv
+
+
+def plot_ellipse_periodic(ax, x, y, w, h, crosshair=False, bnd=(-np.pi, np.pi), **kwargs):
+    """ Show an Ellipse in a plot periodic in y direction.
+
+    Parameters
+    ----------
+    ax : plt.axes
+        Axes to plot on.
+    x : float
+        Center in x.
+    y : float
+        Center in y.
+    w : float
+        Width in x.
+    h : float
+        Height in y.
+    crosshair : bool
+        Show a cross indicating the center.
+    bnd : (float, float)
+        Locations of the periodic boundary.
+    """
+    from matplotlib.patches import Ellipse
+    L = bnd[1] - bnd[0]
+    C = 0.5*(bnd[1] + bnd[0])
+
+    plot_args = kwargs.copy()
+    if "color" in kwargs:
+        plot_args["edgecolor"] = kwargs["color"]
+        del plot_args["color"]
+    else:
+        kwargs["edgecolor"] = "C0"
+    e = Ellipse(xy=[x, y], width=w, height=h,
+                fc="None", **kwargs)
+    ax.add_artist(e)
+    e.set_zorder(1000)
+    e.set_clip_box(ax.bbox)
+    y_clone = y+L*(1 if y < C else -1)
+    e = Ellipse(xy=[x, y_clone], width=w,
+                height=h, angle=0, fc="None", **kwargs)
+    ax.add_artist(e)
+    e.set_zorder(1000)
+    e.set_clip_box(ax.bbox)
+
+    lw = e.get_linewidth()
+
+    if crosshair:
+        line_args = kwargs.copy()
+        for k in ["lw", "linewidth"]:
+            if k in line_args:
+                del line_args[k]
+        line_args["lw"] = lw/2
+        if "path_effects" in line_args:
+            del line_args["path_effects"]
+        ax.plot([x + w/2, x - w/2],
+                [y, y], **line_args)
+        plot_vline_periodic(
+            ax, x, y, h/2, **line_args)
