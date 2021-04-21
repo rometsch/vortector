@@ -58,8 +58,49 @@ def find_density_max_position(contour, r, phi, surface_density):
     contour["surface_density_max_pos"] = (x, y)
     contour["surface_density_max_inds"] = inds
 
+def calc_orbital_elements_vortector(vt, n, vrad, vphi, mu, region="contour"):
+    """ Calculate mass-averaged semi-major axis and eccentricity for a vortex
+    of a Vortector object.
+    
+    The selected region can be the contour or the ellipse region (FWHM) of either
+    the vortensity or surface density fit.
+    
+    Parameters
+    ----------
+    vt : vortector.Vortector
+        Vortector instance used as basis.
+    n : int
+        Number of the vortex inside the Vortector vortices list.
+    vrad : np.array 2D 
+        Radial velocity values as 2D array matching the shape of the data in vt.
+    vphi : np.array 2D 
+        Azimuth values as 2D array matching the shape of the data in vt.
+    mu : float
+        Gravitational constant * stellar mass in the used unit system.
+    region : str
+        Region to analyze, either 'contour', 'vortensity', 'surface_density', 
+        by default 'contour'
 
-def orbital_elements(r, phi, area, sigma, vrad, vphi, mu, mask=None):
+    Returns
+    -------
+    dict
+        Dictionary containing the semi-major axis ("a") and eccentricity ("e").
+    """
+    vortex = vt.vortices[n]
+    if region == "contour":
+        mask = vortex["contour"]["mask"]
+    elif region in ["vortensity", "surface_density"]:
+        r0 = vortex["fits"][region]["r0"]
+        hr = np.sqrt(2*np.log(2))*vortex["fits"][region]["sigma_r"]
+        phi0 = vortex["fits"][region]["phi0"]
+        hphi = np.sqrt(2*np.log(2))*vortex["fits"][region]["sigma_phi"]
+        mask = ((vt.radius - r0)/hr)**2 + ((vt.azimuth - phi0)/hphi)**2 <= 1
+    else:
+        raise ValueError(f"region = '{region}' is not supported. Choose from 'contour'/'vortensity'/'surface_density'")
+    
+    return calc_orbital_elements(vt.radius, vt.azimuth, vt.area, vt.surface_density, vrad, vphi, mu, mask=mask)    
+
+def calc_orbital_elements(r, phi, area, sigma, vrad, vphi, mu, mask=None):
     """ Calculate mass-averaged semi-major axis and eccentricity for 2D data.
     
     A subregion of the domain can be selected by specifying a boolean mask.
