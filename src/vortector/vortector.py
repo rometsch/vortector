@@ -70,7 +70,7 @@ class Vortector:
                 del v["contour"]["detection"]["boundary"]
                 del v["contour"]["detection"]["mask_extended"]
             if not include_mask:
-                del c["mask"]
+                del v["contour"]["mask"]
 
     def remove_non_vortex_candidates(self):
         """ Remove candidates not having vortex properties
