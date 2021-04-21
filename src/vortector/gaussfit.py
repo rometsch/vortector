@@ -4,6 +4,7 @@ from scipy.optimize import curve_fit
 
 def gauss(x, c, a, x0, sigma):
     """ A gaussian bell function.
+
     Parameters
     ----------
     x: array
@@ -26,6 +27,7 @@ def gauss(x, c, a, x0, sigma):
 
 def gauss2D(v, c, a, x0, y0, sx, sy):
     """ A 2D version of the gaussian bell function.
+
     Parameters
     ----------
     v: tuple of two array
@@ -53,11 +55,96 @@ def gauss2D(v, c, a, x0, y0, sx, sy):
     return c + a*ex*ey
 
 
+def extract_fit_values(contour, r, phi, vals, reference_point, periodicity=None):
+    mask = contour["mask"]
+    inds = contour[reference_point]
+    r0 = r[inds]
+    phi0 = phi[inds]
+
+    mask_phi = mask[inds[0], :]
+
+    R = r[mask]
+    PHI = phi[mask]
+    Z = vals[mask]
+
+    if periodicity is not None:
+        up = periodicity["upper"]
+        L = periodicity["L"]
+        # capture contours streching over the periodic boundary
+        phi_top = phi[contour["top"]]
+        phi_bottom = phi[contour["bottom"]]
+        if phi_top < phi_bottom:
+            # always place the contour at the higher boundary
+            PHI[PHI <= phi_top] += 2*np.pi
+            if phi0 < phi_top:
+                phi0 += L
+
+    c_ref = np.average(vals[inds[0], np.logical_not(mask_phi)])
+
+    return R, PHI, Z, r0, phi0, c_ref
+
+
+def fit_2D_gaussian_surface_density(contour, r, phi, vals, reference_point, periodicity=None):
+
+    R, PHI, Z, r0, phi0, c_ref = extract_fit_values(
+        contour, r, phi, vals, reference_point, periodicity)
+
+    c_guess = c_ref
+    a_guess = np.max(Z) - c_guess
+
+    dr = np.max(R) - np.min(R)
+    dphi = np.max(PHI) - np.min(PHI)
+    fitter = Gauss2DFitter(R, PHI, Z,
+                           p0={"x0": r0, "y0": phi0,
+                               "c": 0.8*c_ref, "a": a_guess},
+                           blow={"c": 0.75*c_ref, "a": 0.75*a_guess,
+                                 "x0": r0-0.25*dr, "y0": phi0-0.25*dphi},
+                           bup={"c": 1.25*c_ref, "a": 1.25*a_guess,
+                                "x0": r0+0.25*dr, "y0": phi0+0.25*dphi},
+                           )
+    p, cov = fitter.fit()
+
+    if periodicity is not None:
+        up = periodicity["upper"]
+        L = periodicity["L"]
+        if p[3] > up:
+            p[3] -= L
+
+    fit = {"c": p[0], "a": p[1], "r0": p[2], "phi0": p[3],
+           "sigma_r": p[4], "sigma_phi": p[5], "popt": p, "pcov": cov}
+    return fit
+
+
+def fit_2D_gaussian_vortensity(contour, r, phi, vals, reference_point, periodicity=None):
+
+    R, PHI, Z, r0, phi0, c_ref = extract_fit_values(
+        contour, r, phi, vals, reference_point, periodicity)
+
+    c_guess = c_ref
+    a_guess = np.min(Z) - c_guess
+
+    fitter = Gauss2DFitter(R, PHI, Z,
+                           p0={"x0": r0, "y0": phi0,
+                               "c": c_ref, "a": a_guess},
+                           blow={"c": 0.75*c_ref, "a": 1.25*a_guess},
+                           bup={"c": 1.25*c_ref, "a": 0.75*a_guess})
+    p, cov = fitter.fit()
+
+    if periodicity is not None:
+        up = periodicity["upper"]
+        L = periodicity["L"]
+        if p[3] > up:
+            p[3] -= L
+
+    fit = {"c": p[0], "a": p[1], "r0": p[2], "phi0": p[3],
+           "sigma_r": p[4], "sigma_phi": p[5], "popt": p, "pcov": cov}
+    return fit
+
+
 class Gauss2DFitter:
-    def __init__(self, x, y, z, weights=None, autoweight=False, blow=None, bup=None, fixed=None, p0=None):
+    def __init__(self, x, y, z, weights=None, autoweight=False, blow=None, bup=None, p0=None):
         blow = {} if blow is None else blow
         bup = {} if bup is None else bup
-        fixed = {} if fixed is None else fixed
         p0 = {} if p0 is None else p0
 
         self.x = x
@@ -85,7 +172,6 @@ class Gauss2DFitter:
         for key, val in bup.items():
             self.set_upper_bound(key, val)
 
-        self.fixed = fixed
         self.p0 = p0
         self.guess_p0()
 
@@ -98,11 +184,6 @@ class Gauss2DFitter:
         if not key in self.parameters:
             raise KeyError(f"{key} is not a member of the upper bounds dict.")
         self.bup[key] = value
-
-    def set_fixed(self, key, value):
-        if not key in self.parameters:
-            raise KeyError(f"{key} is not a valid parameter.")
-        self.fixed[key] = value
 
     def guess_p0(self):
         x = self.x
@@ -153,7 +234,6 @@ class Gauss2DFitter:
         x = self.x
         y = self.y
         z = self.z
-        fixed = self.fixed
         weights = self.weights
         lower = [self.blow[key] for key in self.parameters]
         upper = [self.bup[key] for key in self.parameters]

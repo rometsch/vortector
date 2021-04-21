@@ -1,7 +1,7 @@
 import numpy as np
 
 from . import analyze
-from .gaussfit import gauss2D, Gauss2DFitter
+from .gaussfit import fit_2D_gaussian_vortensity, fit_2D_gaussian_surface_density, gauss2D
 from .contour import detect_elliptic_contours
 
 
@@ -19,6 +19,11 @@ class Vortector:
         self.area = area
 
         self.azimuthal_boundaries = azimuthal_boundaries
+        self.periodicity = {
+            "upper": azimuthal_boundaries[1],
+            "lower": azimuthal_boundaries[0],
+            "L": azimuthal_boundaries[1] - azimuthal_boundaries[0]
+        }
 
         # Parameters
         self.levels = levels
@@ -145,137 +150,32 @@ class Vortector:
     def fit_contours(self):
         for vortex in self.vortices:
             try:
-                self.fit_gaussians(vortex)
+                fit = fit_2D_gaussian_vortensity(
+                    vortex["contour"],
+                    self.radius,
+                    self.azimuth,
+                    self.vortensity,
+                    "vortensity_min_inds",
+                    periodicity=self.periodicity)
+                vortex["fits"] = {"vortensity": fit}
+                fit = fit_2D_gaussian_surface_density(
+                    vortex["contour"],
+                    self.radius,
+                    self.azimuth,
+                    self.surface_density,
+                    "surface_density_max_inds",
+                    periodicity=self.periodicity)
+                vortex["fits"]["surface_density"] = fit
+                # self.fit_gaussians(vortex)
             except (ValueError, RuntimeError) as e:
-                # print("Warning: ValueError encountered in calculating vortex properties:", e)
+                print(
+                    "Warning: ValueError encountered in calculating vortex properties:", e)
                 pass
             try:
                 self.calc_fit_difference_2D(vortex)
             except KeyError as e:
                 # print("Warning: KeyError encountered in calculating fit differences:", e)
                 pass
-
-    def fit_gaussians(self, vortex):
-
-        contour = vortex["contour"]
-        inds = contour["vortensity_min_inds"]
-
-        def get_pos(inds):
-            r = self.radius[inds]
-            phi = self.azimuth[inds]
-            return (r, phi)
-
-        top = get_pos(contour["top"])
-        left = get_pos(contour["left"])
-        right = get_pos(contour["right"])
-        bottom = get_pos(contour["bottom"])
-
-        mask = contour["mask"]
-        mask_r = mask[:, inds[1]]
-        mask_phi = mask[inds[0], :]
-
-        vals = self.surface_density
-        R = self.radius[mask]
-        PHI = self.azimuth[mask]
-
-        Z = vals[mask]
-        Z_r = vals[:, inds[1]]
-        Z_phi = vals[inds[0], :]
-
-        r0 = self.radius[inds]
-        phi0 = self.azimuth[inds]
-
-        c_ref = np.average(Z_phi[np.logical_not(mask_phi)])
-
-        c_guess = c_ref
-        a_guess = np.max(Z) - c_guess
-
-        if bottom[1] > top[1]:
-            if phi0 > 0:
-                mask_up = PHI < phi0-np.pi
-                mask_low = np.logical_not(mask_up)
-
-                R_up = R[mask_up]
-                PHI_up = PHI[mask_up]+2*np.pi
-                Z_up = Z[mask_up]
-
-                R_low = R[mask_low]
-                PHI_low = PHI[mask_low]
-                Z_low = Z[mask_low]
-
-                R_fit = np.append(R_low, R_up)
-                PHI_fit = np.append(PHI_low, PHI_up)
-                Z_fit = np.append(Z_low, Z_up)
-            else:
-                mask_up = PHI > phi0+np.pi
-                mask_low = np.logical_not(mask_up)
-
-                R_up = R[mask_up]
-                PHI_up = PHI[mask_up]-2*np.pi
-                Z_up = Z[mask_up]
-
-                R_low = R[mask_low]
-                PHI_low = PHI[mask_low]
-                Z_low = Z[mask_low]
-
-                R_fit = np.append(R_low, R_up)
-                PHI_fit = np.append(PHI_low, PHI_up)
-                Z_fit = np.append(Z_low, Z_up)
-        else:
-            R_fit = R
-            PHI_fit = PHI
-            Z_fit = Z
-
-        dr = np.max(R_fit) - np.min(R_fit)
-        dphi = np.max(PHI_fit) - np.min(PHI_fit)
-        fitter = Gauss2DFitter(R_fit, PHI_fit, Z_fit,
-                               p0={"x0": r0, "y0": phi0,
-                                   "c": 0.8*c_ref, "a": a_guess},
-                               blow={"c": 0.75*c_ref, "a": 0.75*a_guess,
-                                     "x0": r0-0.25*dr, "y0": phi0-0.25*dphi},
-                               bup={"c": 1.25*c_ref, "a": 1.25*a_guess, "x0": r0+0.25*dr, "y0": phi0+0.25*dphi})
-        p, cov = fitter.fit()
-
-        fit = {"c": p[0], "a": p[1], "r0": p[2], "phi0": p[3],
-               "sigma_r": p[4], "sigma_phi": p[5], "popt": p, "pcov": cov}
-        vortex["fits"] = {"surface_density": fit}
-
-        # print("Sigma fit parameters")
-        # for name, val, guess, low, up in zip(fitter.parameters, popt_rho, fitter.p0.values(), fitter.blow.values(), fitter.bup.values()):
-        #     print(f"{name:5s} {val: .2e} ({guess: .2e}) [{low: .2e}, {up: .2e}]")
-
-        vals = self.vortensity
-        R = self.radius[mask]
-        PHI = self.azimuth[mask]
-        Z = vals[mask]
-        Z_r = vals[:, inds[1]]
-        Z_phi = vals[inds[0], :]
-
-        r0 = self.radius[inds]
-        phi0 = self.azimuth[inds]
-
-        if bottom[1] > top[1]:
-            Z_up = Z[mask_up]
-            Z_low = Z[mask_low]
-            Z_fit = np.append(Z_low, Z_up)
-        else:
-            Z_fit = Z
-
-        c_ref = np.average(Z_phi[np.logical_not(mask_phi)])
-
-        c_guess = c_ref
-        a_guess = np.min(Z) - c_guess
-
-        fitter = Gauss2DFitter(R_fit, PHI_fit, Z_fit,
-                               p0={"x0": r0, "y0": phi0,
-                                   "c": c_ref, "a": a_guess},
-                               blow={"c": 0.75*c_ref, "a": 1.25*a_guess},
-                               bup={"c": 1.25*c_ref, "a": 0.75*a_guess})
-        p, cov = fitter.fit()
-
-        fit = {"c": p[0], "a": p[1], "r0": p[2], "phi0": p[3],
-               "sigma_r": p[4], "sigma_phi": p[5], "popt": p, "pcov": cov}
-        vortex["fits"]["vortensity"] = fit
 
     def calc_fit_difference_2D(self, v, varname="surface_density"):
         """ Calculate the difference of the fit to the data.
