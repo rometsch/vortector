@@ -194,8 +194,12 @@ def show_fit_overview_2D_single(vt, varname, ax, bnd_lines=False,
 
     for n, vort in enumerate(vortices):
         cnt = vort["contour"]
-        ax.contour(Xc, Yc, cnt["mask"], levels=[
-            0, 1, 2], linewidths=1, colors="white")
+        try:
+            ax.contour(Xc, Yc, cnt["mask"], levels=[
+                0, 1, 2], linewidths=1, colors="white")
+        except KeyError:
+            print("Contour mask is not included in the output. Call 'detect_vortices' with 'include_mask=True' to show the outline of the contour.")
+            pass
         x, y = cnt["stats"]["vortensity_min_pos"]
         if not show_fits:
             ax.plot([x], [y], "x")
@@ -552,9 +556,13 @@ def select_fit_region(vt, vortex, ref):
     """
     inds = select_center_inds(vt, vortex, ref)
     if ref == "contour":
-        mask = vortex["contour"]["mask"]
-        mask_r = mask[:, inds[1]]
-        mask_phi = mask[inds[0], :]
+        try:
+            mask = vortex["contour"]["mask"]
+            mask_r = mask[:, inds[1]]
+            mask_phi = mask[inds[0], :]
+        except KeyError:
+            mask_r, mask_phi = direction_masks_from_extent(
+                vt.radius.shape, vortex["contour"])
     elif ref in ["vortensity", "surface_density"]:
         center = vortex["fits"][ref]["r0"]
         hw = vortex["fits"][ref]["sigma_r"]
@@ -565,6 +573,25 @@ def select_fit_region(vt, vortex, ref):
     else:
         raise AttributeError(
             f"'{ref}' is not a valid reference for fitting.")
+    return mask_r, mask_phi
+
+
+def direction_masks_from_extent(shape, contour):
+    left = contour["left"]
+    right = contour["right"]
+    top = contour["top"]
+    bottom = contour["bottom"]
+
+    mask_r = np.zeros(shape[0], dtype=bool)
+    mask_r[left[0]:right[0]+1] = True
+
+    mask_phi = np.zeros(shape[1], dtype=bool)
+    if bottom[1] < top[1]:
+        mask_phi[bottom[1]:top[1]+1] = True
+    else:
+        mask_phi[0:top[1]+1] = True
+        mask_phi[bottom[1]:] = True
+
     return mask_r, mask_phi
 
 
