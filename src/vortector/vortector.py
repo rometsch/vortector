@@ -35,6 +35,11 @@ class Vortector:
 
         self.mass = self.area*self.surface_density
 
+    def print(self, *args, **kwargs):
+        """ Print when verbose flag is set. """
+        if self.verbose:
+            print(*args, **kwargs)
+
     def detect_vortices(self, include_mask=False, keep_internals=False):
 
         self.candidates = detect_elliptic_contours(self.vortensity,
@@ -85,17 +90,15 @@ class Vortector:
             cid = c["detection"]["opencv_contour_number"]
             try:
                 if c["stats"]["vortensity_min"] > 1:
-                    if self.verbose:
-                        print(
-                            f"Check candidates: excluding {cid} because of min_vortensity > 1")
+                    self.print(
+                        f"Check candidates: excluding {cid} because of min_vortensity > 1")
                     no_min.append(n)
                     continue
                 vortensity_drop = c["stats"]["vortensity_max"] - \
                     c["stats"]["vortensity_min"]
                 if vortensity_drop < self.mvd:
-                    if self.verbose:
-                        print(
-                            f"Check candidates: excluding {cid} vortensity drop is {vortensity_drop} < {self.mvd}")
+                    self.print(
+                        f"Check candidates: excluding {cid} vortensity drop is {vortensity_drop} < {self.mvd}")
                     no_min.append(n)
             except KeyError:
                 # remove candiates causing errors
@@ -144,7 +147,7 @@ class Vortector:
                 analyze.calc_azimuthal_statistics(
                     c["stats"], self.surface_density, self.vortensity)
             except (ValueError, RuntimeError) as e:
-                print(
+                self.print(
                     "Warning: ValueError encountered in calculating vortex properties:", e)
                 pass
 
@@ -168,13 +171,14 @@ class Vortector:
                     periodicity=self.periodicity)
                 vortex["fits"]["surface_density"] = fit
             except (ValueError, RuntimeError) as e:
-                print(
+                self.print(
                     "Warning: ValueError encountered in calculating vortex properties:", e)
                 pass
             try:
                 self.calc_fit_difference_2D(vortex)
             except KeyError as e:
-                # print("Warning: KeyError encountered in calculating fit differences:", e)
+                self.print(
+                    "Warning: KeyError encountered in calculating fit differences:", e)
                 pass
 
     def calc_fit_difference_2D(self, v, varname="surface_density"):
