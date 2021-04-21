@@ -197,7 +197,7 @@ def show_fit_overview_2D_single(vt, varname, ax, bnd_lines=False,
         cnt = vort["contour"]
         ax.contour(Xc, Yc, cnt["mask"], levels=[
             0, 1, 2], linewidths=1, colors="white")
-        x, y = cnt["vortensity_min_pos"]
+        x, y = cnt["stats"]["vortensity_min_pos"]
         if not show_fits:
             ax.plot([x], [y], "x")
 
@@ -511,7 +511,7 @@ def select_center_inds(vt, vortex, ref):
         Radial and azimuthal index of center.
     """
     if ref == "contour":
-        r0, phi0 = vortex["contour"]["vortensity_min_pos"]
+        r0, phi0 = vortex["contour"]["stats"]["vortensity_min_pos"]
     elif ref == "vortensity":
         r0 = vortex["fits"]["vortensity"]["r0"]
         phi0 = vortex["fits"]["vortensity"]["phi0"]
@@ -577,10 +577,10 @@ def choose_main_vortex(vortices):
         return vortices[0]
 
     large_vortices = [vortices[0]]
-    ref_mass = vortices[0]["contour"]["mass"]
+    ref_mass = vortices[0]["contour"]["stats"]["mass"]
     # keep vortices that have 20% of most massive's mass
     for vortex in vortices[1:]:
-        if vortex["contour"]["mass"] > ref_mass/5:
+        if vortex["contour"]["stats"]["mass"] > ref_mass/5:
             large_vortices.append(vortex)
 
     vortices_with_fit = []
@@ -592,7 +592,7 @@ def choose_main_vortex(vortices):
         return vortices_with_fit[0]
 
     sorted_vortices = sorted(
-        large_vortices, key=lambda x: x["contour"]["vortensity_min"])
+        large_vortices, key=lambda x: x["contour"]["stats"]["vortensity_min"])
     return sorted_vortices[0]
 
 

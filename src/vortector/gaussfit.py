@@ -57,7 +57,7 @@ def gauss2D(v, c, a, x0, y0, sx, sy):
 
 def extract_fit_values(contour, r, phi, vals, reference_point, periodicity=None):
     mask = contour["mask"]
-    inds = contour[reference_point]
+    inds = contour["stats"][reference_point]
     r0 = r[inds]
     phi0 = phi[inds]
 

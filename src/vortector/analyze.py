@@ -3,36 +3,39 @@ import numpy as np
 
 def calc_vortex_mass(c, mass):
     mask = c["mask"]
-    c["mass"] = np.sum(mass[mask])
+    c["stats"]["mass"] = np.sum(mass[mask])
 
 
 def calc_vortensity(c, vortensity):
     mask = c["mask"]
-    c["vortensity_mean"] = np.mean(vortensity[mask])
-    c["vortensity_median"] = np.median(vortensity[mask])
-    c["vortensity_min"] = np.min(vortensity[mask])
-    c["vortensity_max"] = np.max(vortensity[mask])
+    s = c["stats"]
+    s["vortensity_mean"] = np.mean(vortensity[mask])
+    s["vortensity_median"] = np.median(vortensity[mask])
+    s["vortensity_min"] = np.min(vortensity[mask])
+    s["vortensity_max"] = np.max(vortensity[mask])
 
 
 def calc_sigma(c, surface_density):
     mask = c["mask"]
-    c["sigma_mean"] = np.mean(surface_density[mask])
-    c["sigma_median"] = np.median(surface_density[mask])
-    c["sigma_min"] = np.min(surface_density[mask])
-    c["sigma_max"] = np.max(surface_density[mask])
+    s = c["stats"]
+    s["surface_density_mean"] = np.mean(surface_density[mask])
+    s["surface_density_median"] = np.median(surface_density[mask])
+    s["surface_density_min"] = np.min(surface_density[mask])
+    s["surface_density_max"] = np.max(surface_density[mask])
 
 
 def calc_vortex_extent(c, area, r, phi):
     mask = c["mask"]
-    c["area"] = np.sum(area[mask])
-    c["rmax"] = r[c["left"]]
-    c["rmin"] = r[c["right"]]
-    c["phimin"] = phi[c["top"]]
-    c["phimax"] = phi[c["bottom"]]
-    if c["phimax"] < c["phimin"]:
-        c["height"] = c["phimax"] + 2*np.pi - c["phimin"]
+    s = c["stats"]
+    s["area"] = np.sum(area[mask])
+    s["rmax"] = r[c["left"]]
+    s["rmin"] = r[c["right"]]
+    s["phimin"] = phi[c["top"]]
+    s["phimax"] = phi[c["bottom"]]
+    if s["phimax"] < s["phimin"]:
+        s["height"] = s["phimax"] + 2*np.pi - s["phimin"]
     else:
-        c["height"] = c["phimax"] - c["phimin"]
+        s["height"] = s["phimax"] - s["phimin"]
 
 
 def find_vortensity_min_position(contour, r, phi, vortensity):
@@ -43,8 +46,8 @@ def find_vortensity_min_position(contour, r, phi, vortensity):
     inds = np.unravel_index(ind, mask.shape)
     x = r[inds]
     y = phi[inds]
-    contour["vortensity_min_pos"] = (x, y)
-    contour["vortensity_min_inds"] = inds
+    contour["stats"]["vortensity_min_pos"] = (x, y)
+    contour["stats"]["vortensity_min_inds"] = inds
 
 
 def find_density_max_position(contour, r, phi, surface_density):
@@ -55,16 +58,17 @@ def find_density_max_position(contour, r, phi, surface_density):
     inds = np.unravel_index(ind, mask.shape)
     x = r[inds]
     y = phi[inds]
-    contour["surface_density_max_pos"] = (x, y)
-    contour["surface_density_max_inds"] = inds
+    contour["stats"]["surface_density_max_pos"] = (x, y)
+    contour["stats"]["surface_density_max_inds"] = inds
+
 
 def calc_orbital_elements_vortector(vt, n, vrad, vphi, mu, region="contour"):
     """ Calculate mass-averaged semi-major axis and eccentricity for a vortex
     of a Vortector object.
-    
+
     The selected region can be the contour or the ellipse region (FWHM) of either
     the vortensity or surface density fit.
-    
+
     Parameters
     ----------
     vt : vortector.Vortector
@@ -96,15 +100,17 @@ def calc_orbital_elements_vortector(vt, n, vrad, vphi, mu, region="contour"):
         hphi = np.sqrt(2*np.log(2))*vortex["fits"][region]["sigma_phi"]
         mask = ((vt.radius - r0)/hr)**2 + ((vt.azimuth - phi0)/hphi)**2 <= 1
     else:
-        raise ValueError(f"region = '{region}' is not supported. Choose from 'contour'/'vortensity'/'surface_density'")
-    
-    return calc_orbital_elements(vt.radius, vt.azimuth, vt.area, vt.surface_density, vrad, vphi, mu, mask=mask)    
+        raise ValueError(
+            f"region = '{region}' is not supported. Choose from 'contour'/'vortensity'/'surface_density'")
+
+    return calc_orbital_elements(vt.radius, vt.azimuth, vt.area, vt.surface_density, vrad, vphi, mu, mask=mask)
+
 
 def calc_orbital_elements(r, phi, area, sigma, vrad, vphi, mu, mask=None):
     """ Calculate mass-averaged semi-major axis and eccentricity for 2D data.
-    
+
     A subregion of the domain can be selected by specifying a boolean mask.
-    
+
     Parameters
     ----------
     r : np.array 2D 
@@ -129,39 +135,39 @@ def calc_orbital_elements(r, phi, area, sigma, vrad, vphi, mu, mask=None):
     dict
         Dictionary containing the semi-major axis ("a") and eccentricity ("e").
     """
-    #mass of each cell
+    # mass of each cell
     mass = sigma * area
 
-    #velocities in cartesian for each cell
+    # velocities in cartesian for each cell
     vx = vrad*np.cos(phi) - vphi*np.sin(phi)
     vy = vrad*np.sin(phi) + vphi*np.cos(phi)
-    
-    #cartesian coordinates
-    x  = r * np.cos(phi)
-    y  = r * np.sin(phi)
 
-    #specific angular momentum and speed squared
-    h2  = (x*vy - y*vx)**2
-    v2  = vx*vx + vy*vy
+    # cartesian coordinates
+    x = r * np.cos(phi)
+    y = r * np.sin(phi)
 
-    #smj axis from energy
+    # specific angular momentum and speed squared
+    h2 = (x*vy - y*vx)**2
+    v2 = vx*vx + vy*vy
+
+    # smj axis from energy
     eng = 0.5*v2 - mu/r
-    a   = -0.5*mu/eng
-    
-    #eccentricity
+    a = -0.5*mu/eng
+
+    # eccentricity
     ecc = np.sqrt(1.0-h2/(mu*a))
-    
-    #weight by mass, calculate weighted eccentricity of each cell
+
+    # weight by mass, calculate weighted eccentricity of each cell
     if mask is None:
         mask = np.ones(mass.shape, dtype=bool)
-        
+
     mass = mass[mask]
     a = a[mask]
     ecc = ecc[mask]
-    
+
     total_mass = np.sum(mass)
-    
+
     weighted_a = np.sum(a*mass)/total_mass
     weighted_ecc = np.sum(ecc*mass)/total_mass
 
-    return {"a" : weighted_a, "e" : weighted_ecc}
+    return {"a": weighted_a, "e": weighted_ecc}

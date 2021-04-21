@@ -37,14 +37,16 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     contours_closed = extract_closed_contours(
         thresh, contours_largest, max_ellipse_aspect_ratio, verbose=verbose)
 
-    candidates = extract_ellipse_contours(
+    contours = extract_ellipse_contours(
         thresh, contours_closed, max_ellipse_deviation)
+
+    generate_ancestors(contours, hierarchy, verbose=verbose)
+    generate_descendants(contours, verbose=verbose)
+    prune_candidates_by_hierarchy(contours)
+
+    candidates = [{"detection": contour} for contour in contours.values()]
     create_vortex_mask(candidates, supersample, Nx,
                        Ny, int_aspect, verbose=verbose)
-
-    generate_ancestors(candidates, hierarchy, verbose=verbose)
-    generate_descendants(candidates, verbose=verbose)
-    prune_candidates_by_hierarchy(candidates)
 
     return candidates
 
@@ -241,7 +243,8 @@ def extract_ellipse_contours(thresh, contours_closed, max_ellipse_deviation):
 def create_vortex_mask(candidates, supersample, Nx, Ny, int_aspect, verbose=False):
     # Transform the image from ellipse fitting images back to match the grid
 
-    for contour in candidates.values():
+    for candidate in candidates:
+        contour = candidate["detection"]
         mask_extended = contour["mask_extended"]
         # reduce back to normal image size
         Nq = int(mask_extended.shape[0]/4)
@@ -260,7 +263,7 @@ def create_vortex_mask(candidates, supersample, Nx, Ny, int_aspect, verbose=Fals
             else:
                 mask = mask[:, ::int_aspect]
         mask = np.array(mask, dtype=bool)
-        contour["mask"] = mask
+        candidate["mask"] = mask
 
         # map the bounding points to view and data shape
         for key in ["bottom", "top", "left", "right"]:
@@ -275,7 +278,7 @@ def create_vortex_mask(candidates, supersample, Nx, Ny, int_aspect, verbose=Fals
                 y /= int_aspect
             x = int(x)
             y = int(y)
-            contour[key] = (x, y)
+            candidate[key] = (x, y)
 
     if verbose:
         print(

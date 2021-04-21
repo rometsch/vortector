@@ -46,7 +46,7 @@ class Vortector:
         self.calculate_contour_properties()
 
         self.vortices = []
-        for c in self.candidates.values():
+        for c in self.candidates:
             self.vortices.append({"contour": c})
 
         self.fit_contours()
@@ -55,14 +55,14 @@ class Vortector:
 
         self.sort_vortices_by_mass()
 
-        self.remove_intermediate_data(include_mask, keep_internals)
+        # self.remove_intermediate_data(include_mask, keep_internals)
 
         return self.vortices
 
     def sort_vortices_by_mass(self):
         """ Sort the vortices by mass decending. """
         self.vortices = [v for v in reversed(
-            sorted(self.vortices, key=lambda v: v["contour"]["mass"]))]
+            sorted(self.vortices, key=lambda v: v["contour"]["stats"]["mass"]))]
 
     def remove_intermediate_data(self, include_mask=False, keep_internals=False):
         for v in self.vortices:
@@ -86,15 +86,16 @@ class Vortector:
         no_min = []
         for n, vortex in enumerate(self.vortices):
             c = vortex["contour"]
-            cid = c["opencv_contour_number"]
+            cid = c["detection"]["opencv_contour_number"]
             try:
-                if c["vortensity_min"] > 1:
+                if c["stats"]["vortensity_min"] > 1:
                     if self.verbose:
                         print(
                             f"Check candidates: excluding {cid} because of min_vortensity > 1")
                     no_min.append(n)
                     continue
-                vortensity_drop = c["vortensity_max"] - c["vortensity_min"]
+                vortensity_drop = c["stats"]["vortensity_max"] - \
+                    c["stats"]["vortensity_min"]
                 if vortensity_drop < self.mvd:
                     if self.verbose:
                         print(
@@ -117,13 +118,13 @@ class Vortector:
         to_del = []
         for v in self.vortices:
             c = v["contour"]
-            inds = c["vortensity_min_inds"]
-            mass = c["mass"]
+            inds = c["stats"]["vortensity_min_inds"]
+            mass = c["stats"]["mass"]
 
             for n, o in enumerate(self.vortices):
                 oc = o["contour"]
-                o_inds = oc["vortensity_min_inds"]
-                o_mass = oc["mass"]
+                o_inds = oc["stats"]["vortensity_min_inds"]
+                o_mass = oc["stats"]["mass"]
                 if o_inds == inds and o_mass < mass:
                     to_del.append(n)
         for k, n in enumerate(set(to_del)):
@@ -132,8 +133,9 @@ class Vortector:
     def calculate_contour_properties(self):
         # Get the mass and vortensity inside the candidates
 
-        for c in self.candidates.values():
+        for c in self.candidates:
             try:
+                c["stats"] = dict()
                 analyze.calc_vortex_mass(c, self.mass)
                 analyze.calc_vortensity(c, self.vortensity)
                 analyze.calc_sigma(c, self.surface_density)
@@ -144,7 +146,8 @@ class Vortector:
                 analyze.find_density_max_position(
                     c, self.radius, self.azimuth, self.surface_density)
             except (ValueError, RuntimeError) as e:
-                # print("Warning: ValueError encountered in calculating vortex properties:", e)
+                print(
+                    "Warning: ValueError encountered in calculating vortex properties:", e)
                 pass
 
     def fit_contours(self):
@@ -215,7 +218,7 @@ class Vortector:
         me = ((R-r0)/hr)**2 + ((PHI-phi0)/hphi)**2 <= 1
 
         Ae = np.sum(self.area[me])
-        Ac = v["contour"]["area"]
+        Ac = v["contour"]["stats"]["area"]
         v["fits"][varname]["properties"] = dict()
         v["fits"][varname]["properties"]["ellipse_area_numerical"] = Ae
         v["fits"][varname]["properties"]["area_ratio_ellipse_to_contour"] = Ae/Ac
