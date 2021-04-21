@@ -63,7 +63,19 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     create_vortex_mask(candidates, supersample, Nx,
                        Ny, int_aspect, verbose=verbose)
 
+    remove_empty_contours(candidates)
+
     return candidates
+
+
+def remove_empty_contours(candidates):
+    """ Remove artifact contours that don't include any data cell. """
+    to_del = []
+    for n, candidate in enumerate(candidates):
+        if np.sum(candidate["mask"]) == 0:
+            to_del.append(n)
+    for k, n in enumerate(to_del):
+        del candidates[n-k]
 
 
 def contour_image_dimensions(img_shape, verbose=False):
