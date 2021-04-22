@@ -1,8 +1,12 @@
+import warnings
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors
 
 from .gaussfit import gauss
+
+warnings.simplefilter("ignore")
 
 
 def switch_axes_xy(ax):
