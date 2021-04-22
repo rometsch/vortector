@@ -192,9 +192,11 @@ def show_fit_overview_2D_single(vt, varname, ax, bnd_lines=False,
         raise ValueError(
             f"{varname} not supported. Only 'vortensity' and 'sigma'.")
 
-    main_vortex = choose_main_vortex(vt.vortices)
-
-    vortices = [main_vortex] + [v for v in vt.vortices if v != main_vortex]
+    main_vortex = vt.guess_main_vortex()
+    if main_vortex is not None:
+        vortices = [main_vortex] + [v for v in vt.vortices if v != main_vortex]
+    else:
+        vortices = []
 
     for n, vort in enumerate(vortices):
         cnt = vort["contour"]
