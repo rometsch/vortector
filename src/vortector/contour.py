@@ -3,7 +3,7 @@ import cv2
 import matplotlib.pyplot as plt
 
 
-def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse_deviation, verbose=False):
+def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse_deviation, periodic=True, verbose=False):
     """ Detect closed equivalue lines in a 2D contour plot of the data.
 
     1. create a contour line image of the data
@@ -31,7 +31,9 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     """
     Nx, Ny, CNx, CNy, int_aspect, supersample = contour_image_dimensions(
         data.shape, verbose=verbose)
-    thresh = contour_image(CNx, CNy, data, levels)
+    thresh = contour_image(CNx, CNy, data, levels, mirror=periodic)
+
+    plt.imshow(thresh)
 
     contours_largest, hierarchy = find_contours(thresh, verbose=verbose)
     contours_closed = extract_closed_contours(
@@ -61,7 +63,7 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
 
     candidates = [{"detection": contour} for contour in contours.values()]
     create_vortex_mask(candidates, supersample, Nx,
-                       Ny, int_aspect, verbose=verbose)
+                       Ny, int_aspect, verbose=verbose, mirror=periodic)
 
     remove_empty_contours(candidates)
 
@@ -116,21 +118,24 @@ def fig2rgb_array(fig):
     return np.fromstring(buf, dtype=np.uint8).reshape(nrows, ncols, 3)
 
 
-def contour_image(CNx, CNy, vortensity, levels):
+def contour_image(CNx, CNy, vortensity, levels, mirror=False):
     fig = plt.figure(frameon=False, figsize=(CNx, 2*CNy), dpi=1)
     # fig.set_size_inches(w,h)
     ax = plt.Axes(fig, [0., 0., 1., 1.])
     ax.set_axis_off()
     fig.add_axes(ax)
 
-    # periodically extend vortensity
-    Hhalf = int(vortensity.shape[1]/2)
-    vort_pe = np.concatenate(
-        [vortensity[:, Hhalf:],
-            vortensity,
-            vortensity[:, :Hhalf]],
-        axis=1
-    )
+    if mirror:
+        # periodically extend vortensity
+        Hhalf = int(vortensity.shape[1]/2)
+        vort_pe = np.concatenate(
+            [vortensity[:, Hhalf:],
+                vortensity,
+                vortensity[:, :Hhalf]],
+            axis=1
+        )
+    else:
+        vort_pe = vortensity
 
     ax.contour(vort_pe.transpose(),
                levels=levels, linewidths=CNx/1000)
@@ -267,49 +272,75 @@ def extract_ellipse_contours(thresh, contours_closed, max_ellipse_deviation):
     return candidates
 
 
-def create_vortex_mask(candidates, supersample, Nx, Ny, int_aspect, verbose=False):
+def create_vortex_mask(candidates, supersample, Nx, Ny, int_aspect, mirror=False, verbose=False):
     # Transform the image from ellipse fitting images back to match the grid
-
+    print(f"creating masks with mirror={mirror}")
     for candidate in candidates:
-        contour = candidate["detection"]
-        mask_extended = contour["mask_extended"]
-        # reduce back to normal image size
-        Nq = int(mask_extended.shape[0]/4)
-        mask_lower = mask_extended[3*Nq:, :]
-        mask_upper = mask_extended[:Nq, :]
-        mask_repeated = np.concatenate([mask_lower, mask_upper])
-        mask_orig = mask_extended[Nq:3*Nq, :]
-        mask_reduced = np.logical_or(mask_orig, mask_repeated)
 
-        # fit back to original data shape
-        mask = mask_reduced.transpose()[:, ::-1]
-        mask = mask[::supersample, ::supersample]
-        if int_aspect >= 2:
-            if Nx < Ny:
-                mask = mask[::int_aspect, :]
-            else:
-                mask = mask[:, ::int_aspect]
-        mask = np.array(mask, dtype=bool)
-        candidate["mask"] = mask
+        if not mirror:
+            contour = candidate["detection"]
+            mask = contour["mask_extended"]
 
-        # map the bounding points to view and data shape
-        for key in ["bottom", "top", "left", "right"]:
-            pnt = contour[key + "_extended"]
-            x, y = map_ext_pnt_to_orig(pnt, Nq)
-            y = 2*Nq - y
-            x /= supersample
-            y /= supersample
-            if Nx < Ny:
-                x /= int_aspect
-            else:
-                y /= int_aspect
-            x = int(x)
-            y = int(y)
-            candidate[key] = (x, y)
+            # fit back to original data shape
+            mask = mask.transpose()[:, ::-1]
+            mask = mask[::supersample, ::supersample]
+            if int_aspect >= 2:
+                if Nx < Ny:
+                    mask = mask[::int_aspect, :]
+                else:
+                    mask = mask[:, ::int_aspect]
+            mask = np.array(mask, dtype=bool)
+            candidate["mask"] = mask
 
-    if verbose:
-        print(
-            f"Mapping mask: mask.shape = {mask.shape}, mask_orig.shape {mask_orig.shape}")
+            for key in ["bottom", "top", "left", "right"]:
+                pnt = contour[key + "_extended"]
+                x, y = map_ext_pnt_to_orig(pnt, Ny/2)
+                y = Ny - y
+                x /= supersample
+                y /= supersample
+                if Nx < Ny:
+                    x /= int_aspect
+                else:
+                    y /= int_aspect
+                x = int(x)
+                y = int(y)
+                candidate[key] = (x, y)
+        else:
+            contour = candidate["detection"]
+            mask_extended = contour["mask_extended"]
+            # reduce back to normal image size
+            Nq = int(mask_extended.shape[0]/4)
+            mask_lower = mask_extended[3*Nq:, :]
+            mask_upper = mask_extended[:Nq, :]
+            mask_repeated = np.concatenate([mask_lower, mask_upper])
+            mask_orig = mask_extended[Nq:3*Nq, :]
+            mask_reduced = np.logical_or(mask_orig, mask_repeated)
+
+            # fit back to original data shape
+            mask = mask_reduced.transpose()[:, ::-1]
+            mask = mask[::supersample, ::supersample]
+            if int_aspect >= 2:
+                if Nx < Ny:
+                    mask = mask[::int_aspect, :]
+                else:
+                    mask = mask[:, ::int_aspect]
+            mask = np.array(mask, dtype=bool)
+            candidate["mask"] = mask
+
+            # map the bounding points to view and data shape
+            for key in ["bottom", "top", "left", "right"]:
+                pnt = contour[key + "_extended"]
+                x, y = map_ext_pnt_to_orig(pnt, Nq)
+                y = 2*Nq - y
+                x /= supersample
+                y /= supersample
+                if Nx < Ny:
+                    x /= int_aspect
+                else:
+                    y /= int_aspect
+                x = int(x)
+                y = int(y)
+                candidate[key] = (x, y)
 
 
 def map_ext_pnt_to_orig(pnt, Nq):

@@ -46,7 +46,8 @@ class Vortector:
                                                    self.levels,
                                                    self.mear,
                                                    self.med,
-                                                   self.verbose)
+                                                   verbose=self.verbose,
+                                                   periodic=True)
 
         self.calculate_contour_properties()
 
