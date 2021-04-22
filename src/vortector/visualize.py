@@ -175,13 +175,15 @@ def show_fit_overview_2D_single(vt, varname, ax, bnd_lines=False,
         Z = vt.surface_density
         cmap = "magma"
 
-        try:
-            vmax = vt.vortices[0]["fits"]["surface_density"]["c"] + \
-                vt.vortices[0]["fits"]["surface_density"]["a"]
-        except (KeyError, IndexError):
-            vmax = np.max(Z)
+        # try:
+        #     vmax = vt.vortices[0]["fits"]["surface_density"]["c"] + \
+        #         vt.vortices[0]["fits"]["surface_density"]["a"]
+        # except (KeyError, IndexError):
+        #     vmax = np.max(Z)
 
+        vmax = np.max(Z)
         vmin = min(1e-5*vmax, np.min(Z))
+
         norm = matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax)
         img = ax.pcolormesh(
             Xc, Yc, Z, cmap=cmap, norm=norm, rasterized=True, shading="auto")
@@ -355,7 +357,6 @@ def show_radial_fit(vt, ax, key, n, ref="contour", center=None):
     try:
         vortex = vt.vortices[n]
     except IndexError:
-        print("No vortex found.")
         return
 
     try:
@@ -411,7 +412,6 @@ def show_azimuthal_fit(vt, ax, key, n, ref="contour", center=None):
     try:
         c = [c for c in vt.vortices][n]
     except IndexError:
-        print("No vortex found.")
         return
 
     try:
