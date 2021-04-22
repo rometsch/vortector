@@ -40,7 +40,7 @@ class Vortector:
         if self.verbose:
             print(*args, **kwargs)
 
-    def detect_vortices(self, include_mask=False, keep_internals=False):
+    def detect(self, include_mask=False, keep_internals=False):
 
         self.candidates = detect_elliptic_contours(self.vortensity,
                                                    self.levels,
@@ -63,6 +63,9 @@ class Vortector:
         self.remove_intermediate_data(include_mask, keep_internals)
 
         return self.vortices
+
+    def guess_main_vortex(self):
+        return choose_main_vortex(self.vortices)
 
     def sort_vortices_by_mass(self):
         """ Sort the vortices by mass decending. """
@@ -235,3 +238,30 @@ class Vortector:
                 numvals*area)
             v["fits"][varname]["properties"][f"{region}_mass_fit"] = np.sum(
                 fitvals*area)
+
+
+def choose_main_vortex(vortices):
+    """ Choose the most likely largest legitimate vortex from a list of candidates. """
+    if len(vortices) == 0:
+        return None
+    if len(vortices) == 1:
+        return vortices[0]
+
+    large_vortices = [vortices[0]]
+    ref_mass = vortices[0]["contour"]["stats"]["mass"]
+    # keep vortices that have 20% of most massive's mass
+    for vortex in vortices[1:]:
+        if vortex["contour"]["stats"]["mass"] > ref_mass/5:
+            large_vortices.append(vortex)
+
+    vortices_with_fit = []
+    for vortex in large_vortices:
+        if "fits" in vortex:
+            vortices_with_fit.append(vortex)
+
+    if len(vortices_with_fit) > 0:
+        return vortices_with_fit[0]
+
+    sorted_vortices = sorted(
+        large_vortices, key=lambda x: x["contour"]["stats"]["vortensity_min"])
+    return sorted_vortices[0]

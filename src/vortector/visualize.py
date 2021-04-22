@@ -595,33 +595,6 @@ def direction_masks_from_extent(shape, contour):
     return mask_r, mask_phi
 
 
-def choose_main_vortex(vortices):
-    """ Choose a vortex from a list of candidates. """
-    if len(vortices) == 0:
-        return dict({})
-    if len(vortices) == 1:
-        return vortices[0]
-
-    large_vortices = [vortices[0]]
-    ref_mass = vortices[0]["contour"]["stats"]["mass"]
-    # keep vortices that have 20% of most massive's mass
-    for vortex in vortices[1:]:
-        if vortex["contour"]["stats"]["mass"] > ref_mass/5:
-            large_vortices.append(vortex)
-
-    vortices_with_fit = []
-    for vortex in large_vortices:
-        if "fits" in vortex:
-            vortices_with_fit.append(vortex)
-
-    if len(vortices_with_fit) > 0:
-        return vortices_with_fit[0]
-
-    sorted_vortices = sorted(
-        large_vortices, key=lambda x: x["contour"]["stats"]["vortensity_min"])
-    return sorted_vortices[0]
-
-
 def position_index(x, x0):
     """ Index of position x0 in array x .
 
