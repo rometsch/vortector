@@ -240,6 +240,227 @@ class Vortector:
             v["fits"][varname]["properties"][f"{region}_mass_fit"] = np.sum(
                 fitvals*area)
 
+    def extract_data(self, vortex, region="contour"):
+        """Extract the data inside the vortex region. 
+
+        Parameters
+        ----------
+        vortex : dict
+            Vortex dictionary as returned by Vortector.
+        region : str, optional
+            Select the region to be used, by default "contour".
+            If region=="contour":
+                Use the contour as region.
+            If region=="vortensity":
+                Use the vortensity fit FWHM ellipse as region.
+            If region=="surface_density":
+                Use the surface density fit FWHM ellipse as region.
+            If region=="combined":
+                Use the combination of all of the above regions.
+        """
+        if region == "contour":
+            bbox = self.contour_bounding_box(vortex)
+            mask = vortex["contour"]["mask"]
+        elif region in ["vortensity", "surface_density"]:
+            bbox = self.ellipse_bounding_box(vortex["fits"][region])
+            mask = self.ellipse_mask(vortex["fits"][region])
+        elif region == "combined":
+            bbox1 = self.contour_bounding_box(vortex)
+            bbox2 = self.ellipse_bounding_box(vortex["fits"]["vortensity"])
+            bbox3 = self.ellipse_bounding_box(
+                vortex["fits"]["surface_density"])
+            bbox = self.merge_bounding_boxes(bbox1, bbox2)
+            bbox = self.merge_bounding_boxes(bbox, bbox3)
+            mask = self.combined_mask(vortex)
+        else:
+            raise ValueError(f"Invalide mode '{region}'")
+
+        top = bbox["top"]["inds"][1]
+        bottom = bbox["bottom"]["inds"][1]
+        left = bbox["left"]["inds"][0]
+        right = bbox["right"]["inds"][0]
+
+        if bottom < top:
+            r = self.radius[left:right, bottom:top]
+            phi = self.azimuth[left:right, bottom:top]
+            dens = self.surface_density[left:right, bottom:top]
+            vort = self.vortensity[left:right, bottom:top]
+            if mask is not None:
+                mask = mask[left:right, bottom:top]
+            else:
+                mask = np.ones(r.shape, dtype=bool)
+        else:
+            Ny = self.radius.shape[1]
+            r = np.pad(self.radius, [[0, 0], [0, top]], mode="wrap")[
+                left:right, bottom:Ny+top]
+            phi = np.pad(self.azimuth, [[0, 0], [0, top]], mode="wrap")[
+                left:right, bottom:Ny+top]
+            phi[phi < self.azimuth[0, bottom]] += self.periodicity["L"]
+            dens = np.pad(self.surface_density, [[0, 0], [0, top]], mode="wrap")[
+                left:right, bottom:Ny+top]
+            vort = np.pad(self.vortensity, [[0, 0], [0, top]], mode="wrap")[
+                left:right, bottom:Ny+top]
+            if mask is not None:
+                mask = np.pad(mask, [[0, 0], [0, top]], mode="wrap")[
+                    left:right, bottom:Ny+top]
+            else:
+                mask = np.ones(r.shape, dtype=bool)
+
+        return r, phi, vort, dens, mask
+
+    def merge_bounding_boxes(self, bb1, bb2):
+        bbox = {}
+        # left
+        if bb1["left"]["inds"][0] < bb2["left"]["inds"][0]:
+            bbox["left"] = dict(bb1["left"])
+        else:
+            bbox["left"] = dict(bb2["left"])
+        # right
+        if bb1["right"]["inds"][0] > bb2["right"]["inds"][0]:
+            bbox["right"] = dict(bb1["right"])
+        else:
+            bbox["right"] = dict(bb2["right"])
+
+        N = self.radius.shape[1]
+        t1 = bb1["top"]["inds"][1]
+        b1 = bb1["bottom"]["inds"][1]
+        t2 = bb2["top"]["inds"][1]
+        b2 = bb2["bottom"]["inds"][1]
+
+        # consider periodicity
+        if b1 > t1:
+            t1 += N
+        if b2 > t2:
+            t2 += N
+
+        if t1 > t2:
+            bbox["top"] = dict(bb1["top"])
+        else:
+            bbox["top"] = dict(bb2["top"])
+
+        if b1 < b2:
+            bbox["bottom"] = dict(bb1["bottom"])
+        else:
+            bbox["bottom"] = dict(bb2["bottom"])
+
+        return bbox
+
+    def contour_bounding_box(self, vortex):
+        """ Extract the bounding indices of the contour of the vortex.
+
+        Parameters
+        ----------
+        vortex : dict
+            Vortex as returned by the Vortector.
+        """
+        box = {
+            "top": {"inds": vortex["contour"]["top"]},
+            "bottom": {"inds": vortex["contour"]["bottom"]},
+            "left": {"inds": vortex["contour"]["left"]},
+            "right": {"inds": vortex["contour"]["right"]},
+        }
+
+        rs = self.radius[:, 0]
+        phis = self.azimuth[0]
+        for d in box.values():
+            inds = d["inds"]
+            d["pos"] = [rs[inds[0]], phis[inds[1]]]
+
+        return box
+
+    def ellipse_bounding_box(self, fit):
+        """ Extract the bounding indices of the fit ellipse.
+
+        Parameters
+        ----------
+        fit : dict
+            Dict containing the fit parameters: r0, phi0, sigma_r, sigma_phi.
+        """
+        r0 = fit["r0"]
+        hr = np.sqrt(2*np.log(2))*fit["sigma_r"]
+        phi0 = fit["phi0"]
+        hphi = np.sqrt(2*np.log(2))*fit["sigma_phi"]
+
+        r_up = r0 + hr
+        r_low = r0 - hr
+
+        bnd_low = self.periodicity["lower"]
+        L = self.periodicity["L"]
+        phi_up = ((phi0 + hphi) - bnd_low) % L + bnd_low
+        phi_low = ((phi0 - hphi) - bnd_low) % L + bnd_low
+
+        box = {
+            "top": {"pos": [r0, phi_up]},
+            "bottom": {"pos": [r0, phi_low]},
+            "left": {"pos": [r_low, phi0]},
+            "right": {"pos": [r_up, phi0]}
+        }
+
+        rs = self.radius[:, 0]
+        phis = self.azimuth[0]
+        for d in box.values():
+            r, phi = d["pos"]
+            r_ind = np.argmin(np.abs(rs-r))
+            phi_ind = np.argmin(np.abs(phis-phi))
+            d["inds"] = [r_ind, phi_ind]
+
+        return box
+
+    def ellipse_mask(self, fit):
+        """Create a mask indicating the fit ellipse for varname.
+
+        Parameters
+        ----------
+        fit : dict
+            Dict containing the fit parameters: r0, phi0, sigma_r, sigma_phi.
+
+        Returns
+        -------
+        np.array, 2D, dtype=bool
+            Array mask indicating the ellipse region.
+
+        Raises
+        ------
+        IndexError
+            If the selected fit does not exist.
+        """
+        r0 = fit["r0"]
+        hr = np.sqrt(2*np.log(2))*fit["sigma_r"]
+        phi0 = fit["phi0"]
+        hphi = np.sqrt(2*np.log(2))*fit["sigma_phi"]
+
+        mask = ((self.radius - r0)/hr)**2 + \
+            ((self.azimuth - phi0)/hphi)**2 <= 1
+
+        return mask
+
+    def combined_mask(self, vortex):
+        """Create a mask indicating the combined area of the contour and both fit ellipses.
+
+        Parameters
+        ----------
+        vortex : dict
+            Vortex dict as returned by Vortector.
+
+        Returns
+        -------
+        np.array, 2D, dtype=bool
+            Array mask indicating the combined region.
+
+        Raises
+        ------
+        IndexError
+            If the fits do not exist.
+        """
+        mask_contour = vortex["contour"]["mask"]
+        mask_vort = self.ellipse_mask(vortex["fits"]["vortensity"])
+        mask_dens = self.ellipse_mask(vortex["fits"]["surface_density"])
+
+        mask_ellipses = np.logical_or(mask_vort, mask_dens)
+        mask = np.logical_or(mask_contour, mask_ellipses)
+
+        return mask
+
 
 def choose_main_vortex(vortices):
     """ Choose the most likely largest legitimate vortex from a list of candidates. """
