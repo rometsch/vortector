@@ -29,16 +29,18 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     dict
         Dictionary of the candidate contours with information stored in dictionaries. 
     """
-    Nx, Ny, CNx, CNy, int_aspect, supersample = contour_image_dimensions(
+    Nx, Ny, SNx, SNy, int_aspect, supersample = contour_image_dimensions(
         data.shape, verbose=verbose)
-    thresh = contour_image(CNx, CNy, data, levels, mirror=periodic)
+    thresh = contour_image(SNx, SNy, data, levels, periodic=periodic)
 
-    plt.imshow(thresh)
+    _, ax = plt.subplots(dpi=150)
+    ax.imshow(thresh)
 
     contours_largest, hierarchy = find_contours(thresh, verbose=verbose)
     contours_closed = extract_closed_contours(
         thresh, contours_largest, max_ellipse_aspect_ratio, verbose=verbose)
-
+    if periodic:
+        remove_periodic_duplicates(contours_closed, SNy)
     contours = extract_ellipse_contours(
         thresh, contours_closed, max_ellipse_deviation)
 
@@ -49,8 +51,8 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     parameters = {
         "Nx": Nx,
         "Ny": Ny,
-        "CNx": CNx,
-        "CNy": CNy,
+        "SNx": SNx,
+        "SNy": SNy,
         "int_aspect": int_aspect,
         "supersample": supersample,
         "max_ellipse_aspect_ratio": max_ellipse_aspect_ratio,
@@ -87,28 +89,28 @@ def contour_image_dimensions(img_shape, verbose=False):
 
     if int_aspect >= 2:
         if Nx < Ny:
-            CNx = int_aspect*Nx
-            CNy = Ny
+            SNx = int_aspect*Nx
+            SNy = Ny
         else:
-            CNx = Nx
-            CNy = int_aspect*Ny
+            SNx = Nx
+            SNy = int_aspect*Ny
     else:
-        CNx = Nx
-        CNy = Ny
+        SNx = Nx
+        SNy = Ny
 
-    if min(CNx, CNy) < 1000:
-        supersample = int(np.ceil(1000/min(CNx, CNy)))
+    if min(SNx, SNy) < 1000:
+        supersample = int(np.ceil(1000/min(SNx, SNy)))
     else:
         supersample = 1
 
-    CNx *= supersample
-    CNy *= supersample
+    SNx *= supersample
+    SNy *= supersample
 
     if verbose:
         print(
-            f"Contour image dimensions: Nx {Nx}, Ny {Ny}, int_aspect {int_aspect}, supersample {supersample}, CNx {CNx}, CNy {CNy}")
+            f"Contour image dimensions: Nx {Nx}, Ny {Ny}, int_aspect {int_aspect}, supersample {supersample}, CNx {SNx}, CNy {SNy}")
 
-    return Nx, Ny, CNx, CNy, int_aspect, supersample
+    return Nx, Ny, SNx, SNy, int_aspect, supersample
 
 
 def fig2rgb_array(fig):
@@ -118,27 +120,27 @@ def fig2rgb_array(fig):
     return np.fromstring(buf, dtype=np.uint8).reshape(nrows, ncols, 3)
 
 
-def contour_image(CNx, CNy, vortensity, levels, mirror=False):
-    fig = plt.figure(frameon=False, figsize=(CNx, 2*CNy), dpi=1)
+def contour_image(SNx, SNy, vortensity, levels, periodic=False):
+    size = (SNx, 2*SNy if periodic else SNy)
+    fig = plt.figure(frameon=False, figsize=size, dpi=1)
     # fig.set_size_inches(w,h)
     ax = plt.Axes(fig, [0., 0., 1., 1.])
     ax.set_axis_off()
     fig.add_axes(ax)
 
-    if mirror:
+    if periodic:
         # periodically extend vortensity
-        Hhalf = int(vortensity.shape[1]/2)
-        vort_pe = np.concatenate(
-            [vortensity[:, Hhalf:],
-                vortensity,
-                vortensity[:, :Hhalf]],
-            axis=1
-        )
+        Ny = vortensity.shape[1]
+        pad_top = int(Ny/2)
+        pad_bottom = Ny - pad_top
+        vort_pe = np.pad(
+            vortensity, ((0, 0), (pad_bottom, pad_top)), mode="wrap")
     else:
         vort_pe = vortensity
 
+    linewidth = SNx/1000  # configvalue
     ax.contour(vort_pe.transpose(),
-               levels=levels, linewidths=CNx/1000)
+               levels=levels, linewidths=linewidth)
 
     img_data = fig2rgb_array(fig)
     plt.close(fig)
@@ -188,8 +190,21 @@ def extract_closed_contours(thresh, contours_largest, max_ellipse_aspect_ratio, 
         rightmost = tuple(cnt[cnt[:, :, 0].argmax()][0])
         topmost = tuple(cnt[cnt[:, :, 1].argmin()][0])
         bottommost = tuple(cnt[cnt[:, :, 1].argmax()][0])
+
         dx = rightmost[0] - leftmost[0]
         dy = bottommost[1] - topmost[1]
+
+        bounding_hor = np.array([rightmost[0], leftmost[0]])
+        bounding_vert = np.array([topmost[1], bottommost[1]])
+        contour["bounding_hor_img"] = bounding_hor
+        contour["bounding_vert_img"] = bounding_vert
+        # save the bounding points
+        contour["bottom_img"] = bottommost
+        contour["top_img"] = topmost
+        contour["left_img"] = leftmost
+        contour["right_img"] = rightmost
+        contour["dx_img"] = dx
+        contour["dy_img"] = dy
 
         Nh = int(thresh.shape[0]/2)
         Nq = int(thresh.shape[0]/4)
@@ -206,35 +221,7 @@ def extract_closed_contours(thresh, contours_largest, max_ellipse_aspect_ratio, 
         if not(is_not_too_elongated and is_area_larget_delimiter and is_not_spanning_whole_height):
             continue
 
-        # sort out the lower of mirror images
-        bounding_hor = np.array([rightmost[0], leftmost[0]])
-        bounding_vert = np.array([topmost[1], bottommost[1]])
-        contour["bounding_hor"] = bounding_hor
-        contour["bounding_vert"] = bounding_vert
-        # save the bounding points
-        contour["bottom_extended"] = bottommost
-        contour["top_extended"] = topmost
-        contour["left_extended"] = leftmost
-        contour["right_extended"] = rightmost
-
-        to_del = None
-        found_mirror = False
-        for k, c in enumerate(contours_closed):
-            same_hor = (bounding_hor == c["bounding_hor"]).all()
-            same_vert = (np.abs(bounding_vert %
-                                Nh - c["bounding_vert"] % Nh) < 20).all()
-            if same_hor and same_vert:
-                if bounding_vert[1] > c["bounding_vert"][1]:
-                    to_del = k
-                found_mirror = True
-                break
-
-        if found_mirror:
-            if to_del is not None:
-                del contours_closed[to_del]
-                contours_closed.append(contour)
-        else:
-            contours_closed.append(contour)
+        contours_closed.append(contour)
 
     if verbose:
         print("Number of closed contours:", len(contours_closed))
@@ -242,6 +229,32 @@ def extract_closed_contours(thresh, contours_largest, max_ellipse_aspect_ratio, 
                                     for c in contours_closed])
 
     return contours_closed
+
+
+def remove_periodic_duplicates(closed_contours, SNy):
+    Nh = SNy // 2
+    indices_to_delete = []
+    for n, contour in enumerate(closed_contours):
+        # sort out the lower of mirror images
+        bounding_hor = contour["bounding_hor_img"]
+        bounding_vert = contour["bounding_vert_img"]
+
+        found_mirror = False
+        for k, other in enumerate(closed_contours[n:]):
+            if k in indices_to_delete:
+                continue
+            same_hor = (bounding_hor == other["bounding_hor_img"]).all()
+            same_vert = (np.abs(bounding_vert %
+                                Nh - other["bounding_vert_img"] % Nh) < 20).all()
+            if same_hor and same_vert:
+                if other["bounding_vert_img"][1] > bounding_vert[1]:
+                    indices_to_delete.append(k)
+                    found_mirror = True
+            if found_mirror == True:
+                break
+
+    for k, n in enumerate(indices_to_delete):
+        del closed_contours[n-k]
 
 
 def extract_ellipse_contours(thresh, contours_closed, max_ellipse_deviation):
@@ -266,7 +279,7 @@ def extract_ellipse_contours(thresh, contours_closed, max_ellipse_deviation):
         if rel_delta > max_ellipse_deviation:
             continue
 
-        contour["mask_extended"] = im_shape
+        contour["mask_img"] = im_shape
         candidates[contour["opencv_contour_number"]] = contour
 
     return candidates
@@ -279,7 +292,7 @@ def create_vortex_mask(candidates, supersample, Nx, Ny, int_aspect, mirror=False
 
         if not mirror:
             contour = candidate["detection"]
-            mask = contour["mask_extended"]
+            mask = contour["mask_img"]
 
             # fit back to original data shape
             mask = mask.transpose()[:, ::-1]
@@ -293,7 +306,7 @@ def create_vortex_mask(candidates, supersample, Nx, Ny, int_aspect, mirror=False
             candidate["mask"] = mask
 
             for key in ["bottom", "top", "left", "right"]:
-                pnt = contour[key + "_extended"]
+                pnt = contour[key + "_img"]
                 x, y = map_ext_pnt_to_orig(pnt, Ny/2)
                 y = Ny - y
                 x /= supersample
@@ -307,13 +320,13 @@ def create_vortex_mask(candidates, supersample, Nx, Ny, int_aspect, mirror=False
                 candidate[key] = (x, y)
         else:
             contour = candidate["detection"]
-            mask_extended = contour["mask_extended"]
+            mask_img = contour["mask_img"]
             # reduce back to normal image size
-            Nq = int(mask_extended.shape[0]/4)
-            mask_lower = mask_extended[3*Nq:, :]
-            mask_upper = mask_extended[:Nq, :]
+            Nq = int(mask_img.shape[0]/4)
+            mask_lower = mask_img[3*Nq:, :]
+            mask_upper = mask_img[:Nq, :]
             mask_repeated = np.concatenate([mask_lower, mask_upper])
-            mask_orig = mask_extended[Nq:3*Nq, :]
+            mask_orig = mask_img[Nq:3*Nq, :]
             mask_reduced = np.logical_or(mask_orig, mask_repeated)
 
             # fit back to original data shape
@@ -329,7 +342,7 @@ def create_vortex_mask(candidates, supersample, Nx, Ny, int_aspect, mirror=False
 
             # map the bounding points to view and data shape
             for key in ["bottom", "top", "left", "right"]:
-                pnt = contour[key + "_extended"]
+                pnt = contour[key + "_img"]
                 x, y = map_ext_pnt_to_orig(pnt, Nq)
                 y = 2*Nq - y
                 x /= supersample

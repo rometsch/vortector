@@ -77,7 +77,7 @@ class Vortector:
         for v in self.vortices:
             if not keep_internals:
                 del v["contour"]["detection"]["boundary"]
-                del v["contour"]["detection"]["mask_extended"]
+                del v["contour"]["detection"]["mask_img"]
             if not include_mask:
                 del v["contour"]["mask"]
 
