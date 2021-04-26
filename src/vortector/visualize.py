@@ -90,6 +90,8 @@ def show_fit_overview_2D(vt, n=0, axes=None, bnd_lines=False, bnd_pnts=False, sh
                                 show_fits=show_fits, fit_contours=fit_contours,
                                 cbar_axes=[axes[1, 0], axes[1, 1]])
 
+    yticklabels = axes[1, 0].get_yticklabels()
+
     ax = axes[0, 0]
     show_radial_fit(vt, ax, "vortensity", 0, ref="contour")
 
@@ -119,8 +121,9 @@ def show_fit_overview_2D(vt, n=0, axes=None, bnd_lines=False, bnd_pnts=False, sh
 
     ax = axes[0, 0]
     ax.set_ylim(-0.5, 1)
-    ax.set_xticklabels([])
+    ax.tick_params(labelbottom=False)
     ax.set_xlabel("")
+    ax.set_ylabel("")
     leg = ax.get_legend()
     if leg is not None:
         leg.remove()
@@ -139,15 +142,16 @@ def show_fit_overview_2D(vt, n=0, axes=None, bnd_lines=False, bnd_pnts=False, sh
         leg.remove()
     ax.set_xlabel("")
     ax.set_ylabel("")
-    ax.set_yticklabels([])
+    ax.tick_params(labelleft=False)
     ax.set_xticks(xticks)
     ax.set_xticklabels([f"{x:.1f}" for x in xticks], rotation=270)
     ax.set_ylim(-np.pi, np.pi)
     ax.set_xlim(vallim)
 
     ax = axes[0, 3]
-    ax.set_xticklabels([])
+    ax.tick_params(labelbottom=False)
     ax.set_xlabel("")
+    ax.set_ylabel("")
     leg = ax.get_legend()
     if leg is not None:
         leg.remove()
@@ -160,12 +164,15 @@ def show_fit_overview_2D(vt, n=0, axes=None, bnd_lines=False, bnd_pnts=False, sh
         leg.remove()
     ax.set_xlabel("")
     ax.set_ylabel("")
-    ax.set_yticklabels([])
+    ax.tick_params(labelleft=False)
     ax.set_xticks(xticks)
     ax.set_xticklabels([f"{x:.1e}" for x in xticks],
                        rotation=270, fontsize=8)
     ax.set_xlim(left=0)
     ax.set_ylim(-np.pi, np.pi)
+
+    for ax in [axes[1, 0], axes[1, 3]]:
+        ax.set_yticklabels(yticklabels)
 
 
 def show_fit_overview_2D_single(vt, varname, ax, bnd_lines=False,
