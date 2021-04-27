@@ -231,7 +231,7 @@ class Vortector:
         for region, mask, area in zip(["contour", "ellipse"], [mc, me], [Ac, Ae]):
             fitvals = f(R[mask], PHI[mask])
             numvals = vals[mask]
-            diff = np.sum(np.abs(fitvals - numvals))
+            diff = np.sum(np.abs(fitvals - numvals)*self.area[mask])
             reldiff = diff/(area*a)
             v["fits"][varname]["properties"][f"{region}_diff"] = diff
             v["fits"][varname]["properties"][f"{region}_reldiff"] = reldiff
@@ -473,8 +473,13 @@ def choose_main_vortex(vortices):
     ref_mass = vortices[0]["contour"]["stats"]["mass"]
     # keep vortices that have 20% of most massive's mass
     for vortex in vortices[1:]:
-        if vortex["contour"]["stats"]["mass"] > ref_mass/5:
+        if vortex["contour"]["stats"]["mass"] > ref_mass/10:
             large_vortices.append(vortex)
+            
+    # sort by relative azimuthal vortensity
+    rel_vort = [v["contour"]["stats"]["vortensity_min"]/v["contour"]["stats"]["azimuthal_at_vortensity_min"]["vortensity_med"]for v in large_vortices]
+    inds = np.argsort(rel_vort)
+    large_vortices = [large_vortices[n] for n in inds]
 
     vortices_with_fit = []
     for vortex in large_vortices:
