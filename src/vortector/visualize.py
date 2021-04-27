@@ -72,7 +72,7 @@ def show_fit_overview_1D(vt, n, axes=None):
     show_azimuthal_fit(vt, ax, key, n, ref=ref, center=center)
 
 
-def show_fit_overview_2D(vt, n=0, axes=None, bnd_lines=False, bnd_pnts=False, show_fits=True, fit_contours=True):
+def show_fit_overview_2D(vt, n=None, axes=None, bnd_lines=False, bnd_pnts=False, show_fits=True, fit_contours=True):
     if axes is None:
         fig, axes = plt.subplots(2, 5, figsize=(10, 6), dpi=150,
                                  #  sharex="col",
@@ -82,6 +82,15 @@ def show_fit_overview_2D(vt, n=0, axes=None, bnd_lines=False, bnd_pnts=False, sh
         if len(axes) != 8:
             raise ValueError(
                 "You need to pass an array with 2 pyplot axes!")
+
+    main_vortex = vt.guess_main_vortex()
+    if n is None:
+        for k in range(len(vt.vortices)):
+            if main_vortex == vt.vortices[k]:
+                n = k
+                break
+    if n is None:
+        n = 0
 
     plt.subplots_adjust(hspace=.001, wspace=0.001)
 
@@ -93,20 +102,20 @@ def show_fit_overview_2D(vt, n=0, axes=None, bnd_lines=False, bnd_pnts=False, sh
     yticklabels = axes[1, 0].get_yticklabels()
 
     ax = axes[0, 0]
-    show_radial_fit(vt, ax, "vortensity", 0, ref="contour")
+    show_radial_fit(vt, ax, "vortensity", n, ref="contour")
 
     ax = axes[1, 1]
-    show_azimuthal_fit(vt, ax, "vortensity", 0, ref="contour")
+    show_azimuthal_fit(vt, ax, "vortensity", n, ref="contour")
 
     show_fit_overview_2D_single(vt, "surface_density", ax=axes[1, 3],
                                 bnd_lines=bnd_lines, bnd_pnts=bnd_pnts,
                                 show_fits=show_fits, fit_contours=fit_contours,
                                 cbar_axes=[axes[1, 3], axes[1, 4]])
     ax = axes[0, 3]
-    show_radial_fit(vt, ax, "surface_density", 0, ref="contour")
+    show_radial_fit(vt, ax, "surface_density", n, ref="contour")
 
     ax = axes[1, 4]
-    show_azimuthal_fit(vt, ax, "surface_density", 0, ref="contour")
+    show_azimuthal_fit(vt, ax, "surface_density", n, ref="contour")
     switch_axes_xy(ax)
 
     for ax in [axes[0, 1], axes[0, 4], axes[0, 2], axes[1, 2]]:
@@ -171,8 +180,8 @@ def show_fit_overview_2D(vt, n=0, axes=None, bnd_lines=False, bnd_pnts=False, sh
     ax.set_xlim(left=0)
     ax.set_ylim(-np.pi, np.pi)
 
-    for ax in [axes[1, 0], axes[1, 3]]:
-        ax.set_yticklabels(yticklabels)
+    # for ax in [axes[1, 0], axes[1, 3]]:
+    #     ax.set_yticklabels(yticklabels)
 
 
 def show_fit_overview_2D_single(vt, varname, ax, bnd_lines=False,
