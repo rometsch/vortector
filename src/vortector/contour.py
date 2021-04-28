@@ -43,7 +43,7 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     if periodic:
         remove_periodic_duplicates(contours_closed, SNy)
     contours = extract_ellipse_contours(
-        thresh, contours_closed, max_ellipse_deviation)
+        thresh.shape, contours_closed, max_ellipse_deviation)
 
     generate_ancestors(contours, hierarchy)
     generate_descendants(contours)
@@ -283,7 +283,7 @@ def remove_periodic_duplicates(closed_contours, SNy):
         del closed_contours[n-k]
 
 
-def extract_ellipse_contours(thresh, contours_closed, max_ellipse_deviation):
+def extract_ellipse_contours(img_shape, contours_closed, max_ellipse_deviation):
     # Extract contours that match an ellipse
 
     candidates = dict()
@@ -295,24 +295,90 @@ def extract_ellipse_contours(thresh, contours_closed, max_ellipse_deviation):
             "axesLengths_img": ellipse[1],
             "angle_img": ellipse[2]
         }
-        im_shape = np.zeros(thresh.shape)
-        cv2.drawContours(im_shape, [cnt], 0, (255, 255, 255), -1)
 
-        im_ellipse = np.zeros(thresh.shape)
-        im_ellipse = cv2.ellipse(im_ellipse, ellipse, (255, 255, 255), -1)
-
-        difference = np.abs(im_shape - im_ellipse)
-        difference_area = np.sum(difference/255)
-
-        rel_delta = difference_area / contour["pixel_area"]
+        # rel_delta_full = ellipse_deviation_draw_full(img_shape, cnt, ellipse, contour["pixel_area"])
+        # rel_delta = rel_delta_full
+        rel_delta = ellipse_deviation_draw(cnt, ellipse, contour["pixel_area"])
+        # print(rel_delta_full, rel_delta, (rel_delta_full - rel_delta)/rel_delta_full)
 
         if rel_delta > max_ellipse_deviation:
             continue
 
-        contour["mask_img"] = im_shape
+        contour["mask_img"] = contour_mask(img_shape, cnt)
         candidates[contour["opencv_contour_number"]] = contour
 
     return candidates
+
+
+def ellipse_deviation_draw(boundary_pnts, ellipse, area):
+    # detemine minimum and maximum extend of the ellipse
+    xmin = np.min(boundary_pnts[:, 0, 0])
+    xmax = np.max(boundary_pnts[:, 0, 0])
+    ymin = np.min(boundary_pnts[:, 0, 1])
+    ymax = np.max(boundary_pnts[:, 0, 1])
+
+    # make sure the ellipse also fits
+    ec = ellipse[0]
+    L = np.ceil(np.max(ellipse[1])/2)
+    xmin = int(min(ec[0]-L, xmin))
+    xmax = int(max(ec[0]+L, xmin))
+    ymin = int(min(ec[1]-L, ymin))
+    ymax = int(max(ec[1]+L, ymin))
+
+    Nx = xmax - xmin
+    Ny = ymax - ymin
+
+    img_shape = (Nx, Ny)
+
+    # adjust a copy of the boundary points
+    boundary_pnts = np.copy(boundary_pnts)
+    boundary_pnts[:, 0, 0] -= xmin
+    boundary_pnts[:, 0, 1] -= ymin
+
+    # adjust a copy of the ellipse
+    ellipse = ((ellipse[0][0] - xmin, ellipse[0][1] - ymin),
+               ellipse[1], ellipse[2])
+
+    im_shape = np.zeros(img_shape)
+    cv2.drawContours(im_shape, [boundary_pnts], 0, (255, 255, 255), -1)
+
+    im_ellipse = np.zeros(img_shape)
+    im_ellipse = cv2.ellipse(im_ellipse, ellipse, (255, 255, 255), -1)
+
+    difference = np.abs(im_shape - im_ellipse)
+    difference_area = np.sum(difference/255)
+
+    rel_delta = difference_area / area
+    return rel_delta
+
+
+def ellipse_deviation_draw_full(img_shape, boundary_pnts, ellipse, area):
+    im_shape = np.zeros(img_shape)
+    cv2.drawContours(im_shape, [boundary_pnts], 0, (255, 255, 255), -1)
+
+    im_ellipse = np.zeros(img_shape)
+    im_ellipse = cv2.ellipse(im_ellipse, ellipse, (255, 255, 255), -1)
+
+    difference = np.abs(im_shape - im_ellipse)
+    difference_area = np.sum(difference/255)
+
+    rel_delta = difference_area / area
+    return rel_delta
+
+
+def contour_mask(img_shape, boundary_pnts):
+    """Create a boolean mask indicating the interior of the image.
+
+    Parameters
+    ----------
+    img_shape : tuple of ints
+        Number of pixels in x and y direction.
+    boundary_pnts : np.array of pairs of ints
+        List of boundary points.
+    """
+    mask = np.zeros(img_shape, dtype=np.int8)
+    cv2.drawContours(mask, [boundary_pnts], 0, (255, 255, 255), -1)
+    return mask
 
 
 def create_vortex_mask(candidates, supersample, SNy, pad, periodic=False):
