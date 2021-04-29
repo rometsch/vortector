@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
+from multiprocessing import Pool
 
 
 def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse_deviation, periodic=True, verbose=False):
@@ -290,24 +291,83 @@ def extract_ellipse_contours(img_shape, contours_closed, max_ellipse_deviation):
     for contour in contours_closed:
         cnt = contour["boundary"]
         ellipse = cv2.fitEllipse(cnt)
+        # rel_delta, delta = ellipse_deviation_draw(cnt, ellipse, contour["pixel_area"])
+        rel_delta, delta = ellipse_deviation_semianalytic(
+            cnt, ellipse, contour["pixel_area"])
+
+        if rel_delta > max_ellipse_deviation:
+            continue
+
         contour["ellipse"] = {
             "center_img": ellipse[0],
             "axesLengths_img": ellipse[1],
             "angle_img": ellipse[2]
         }
-
-        # rel_delta_full = ellipse_deviation_draw_full(img_shape, cnt, ellipse, contour["pixel_area"])
-        # rel_delta = rel_delta_full
-        rel_delta = ellipse_deviation_draw(cnt, ellipse, contour["pixel_area"])
-        # print(rel_delta_full, rel_delta, (rel_delta_full - rel_delta)/rel_delta_full)
-
-        if rel_delta > max_ellipse_deviation:
-            continue
-
         contour["mask_img"] = contour_mask(img_shape, cnt)
+        contour["ellipse_area_delta_relative"] = rel_delta
+        contour["ellipse_area_delta"] = delta
         candidates[contour["opencv_contour_number"]] = contour
 
     return candidates
+
+
+def ellipse_pnt(x, y, ellipse):
+    angle = ellipse[2]/180*np.pi
+    cx = ellipse[0][0]
+    cy = ellipse[0][1]
+    e1 = ellipse[1][0]/2
+    e2 = ellipse[1][1]/2
+
+    l = np.sqrt((x-cx)**2 + (y-cy)**2)
+    nx = (x-cx) / l
+    ny = (y-cy) / l
+
+    na = np.arctan2(ny, nx)
+    alpha = na - angle
+
+    tansq = np.tan(alpha)**2
+    length = e1 * np.sqrt((1+tansq)/(1+tansq*e1**2/e2**2))
+
+    px = cx + length * nx
+    py = cy + length * ny
+
+    return px, py
+
+
+def tetragon_area(p1, p2, p3, p4):
+    return triangle_area(p1, p2, p3) + triangle_area(p1, p3, p4)
+
+
+def triangle_area(p1, p2, p3):
+    signed_area = (
+        +p3[0] * (p1[1] - p2[1])
+        + p1[0] * (p2[1] - p3[1])
+        + p2[0] * (p3[1] - p1[1])
+    ) / 2
+    return np.abs(signed_area)
+
+
+def calc_diff_area(bx, by, ellipse):
+    px, py = ellipse_pnt(bx, by, ellipse)
+    area = 0
+    for n in range(len(px)-1):
+        p1 = [px[n], py[n]]
+        p4 = [px[n+1], py[n+1]]
+        p2 = [bx[n], by[n]]
+        p3 = [bx[n+1], by[n+1]]
+        area += tetragon_area(p1, p2, p3, p4)
+    return area
+
+
+def ellipse_deviation_semianalytic(boundary_pnts, ellipse, area):
+    bx = boundary_pnts[:, 0, 0]
+    by = boundary_pnts[:, 0, 1]
+    if len(bx) > 100:
+        Nstride = int(np.ceil(len(bx)/100))
+    else:
+        Nstride = 1
+    area_diff = calc_diff_area(bx[::Nstride], by[::Nstride], ellipse)
+    return area_diff/area, area_diff
 
 
 def ellipse_deviation_draw(boundary_pnts, ellipse, area):
@@ -328,7 +388,7 @@ def ellipse_deviation_draw(boundary_pnts, ellipse, area):
     Nx = xmax - xmin
     Ny = ymax - ymin
 
-    img_shape = (Nx, Ny)
+    img_shape = (Ny, Nx)
 
     # adjust a copy of the boundary points
     boundary_pnts = np.copy(boundary_pnts)
@@ -349,7 +409,7 @@ def ellipse_deviation_draw(boundary_pnts, ellipse, area):
     difference_area = np.sum(difference/255)
 
     rel_delta = difference_area / area
-    return rel_delta
+    return rel_delta, difference_area
 
 
 def ellipse_deviation_draw_full(img_shape, boundary_pnts, ellipse, area):
