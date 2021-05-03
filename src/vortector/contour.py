@@ -1,7 +1,6 @@
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
-from multiprocessing import Pool
 
 
 def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse_deviation, periodic=True, verbose=False):
@@ -147,11 +146,6 @@ def fig2rgb_array(fig):
 
 def contour_image(SNx, SNy, vortensity, levels, min_image_size=1000, periodic=False):
     size = (SNx, 2*SNy if periodic else SNy)
-    fig = plt.figure(frameon=False, figsize=size, dpi=1)
-    # fig.set_size_inches(w,h)
-    ax = plt.Axes(fig, [0., 0., 1., 1.])
-    ax.set_axis_off()
-    fig.add_axes(ax)
 
     if periodic:
         # periodically extend vortensity
@@ -166,11 +160,22 @@ def contour_image(SNx, SNy, vortensity, levels, min_image_size=1000, periodic=Fa
         pad = (0, 0)
 
     linewidth = SNx/min_image_size  # configvalue
+
+    mpl_inter = plt.matplotlib.is_interactive()
+    if mpl_inter:
+        plt.ioff()
+
+    fig = plt.figure(frameon=False, figsize=size, dpi=1)
+    ax = plt.Axes(fig, [0., 0., 1., 1.])
+    ax.set_axis_off()
+    fig.add_axes(ax)
     ax.contour(vort_pe.transpose(),
                levels=levels, linewidths=linewidth)
 
     img_data = fig2rgb_array(fig)
     plt.close(fig)
+    if mpl_inter:
+        plt.ion()
 
     img_data = cv2.cvtColor(img_data, cv2.COLOR_BGR2GRAY)
     # Threshold contour image for full contrast
