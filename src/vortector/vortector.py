@@ -3,6 +3,7 @@ import numpy as np
 from . import analyze
 from .gaussfit import fit_2D_gaussian_vortensity, fit_2D_gaussian_surface_density, gauss2D
 from .contour import detect_elliptic_contours
+from .interpolation import *
 
 
 class Vortector:
@@ -40,14 +41,26 @@ class Vortector:
         if self.verbose:
             print(*args, **kwargs)
 
-    def detect(self, include_mask=False, keep_internals=False):
+    def detect(self, include_mask=False, keep_internals=False, linear_radius=False):
 
-        self.candidates = detect_elliptic_contours(self.vortensity,
-                                                   self.levels,
-                                                   self.mear,
-                                                   self.med,
-                                                   verbose=self.verbose,
-                                                   periodic=True)
+        if linear_radius:
+            contour_data, reverse_trafo, trafo = interpolate_to_linear(self.vortensity, self.radius)
+        else:
+            contour_data = self.vortensity    
+        
+        self.candidates = detect_elliptic_contours(
+            contour_data,
+            self.levels,
+            self.mear,
+            self.med,
+            verbose=self.verbose,
+            periodic=True)
+
+        if linear_radius:
+            for c in self.candidates:
+                c["mask"] = interpolate_radial(c["mask"], reverse_trafo)
+                for s in ["top", "bottom", "left", "right"]:
+                    c[s] = transform_indices(c[s], trafo)
 
         self.calculate_contour_properties()
 
@@ -475,9 +488,10 @@ def choose_main_vortex(vortices):
     for vortex in vortices[1:]:
         if vortex["contour"]["stats"]["mass"] > ref_mass/10:
             large_vortices.append(vortex)
-            
+
     # sort by relative azimuthal vortensity
-    rel_vort = [v["contour"]["stats"]["vortensity_min"]/v["contour"]["stats"]["azimuthal_at_vortensity_min"]["vortensity_med"]for v in large_vortices]
+    rel_vort = [v["contour"]["stats"]["vortensity_min"]/v["contour"]["stats"]
+                ["azimuthal_at_vortensity_min"]["vortensity_med"]for v in large_vortices]
     inds = np.argsort(rel_vort)
     large_vortices = [large_vortices[n] for n in inds]
 

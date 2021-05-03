@@ -36,6 +36,10 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     thresh, pad = contour_image(
         SNx, SNy, data, levels, min_image_size=min_img_size, periodic=periodic)
 
+    _, ax = plt.subplots()
+
+    ax.imshow(thresh)
+
     contours_largest, hierarchy = find_contours(thresh, verbose=verbose)
     contours_closed = extract_closed_contours(
         thresh, contours_largest, max_ellipse_aspect_ratio, verbose=verbose)

@@ -72,7 +72,7 @@ def show_fit_overview_1D(vt, n, axes=None):
     show_azimuthal_fit(vt, ax, key, n, ref=ref, center=center)
 
 
-def show_fit_overview_2D(vt, n=None, axes=None, bnd_lines=False, bnd_pnts=False, show_fits=True, fit_contours=True):
+def show_fit_overview_2D(vt, n=None, axes=None, bnd_lines=False, bnd_pnts=False, show_fits=True, fit_contours=True, xscale=None):
     if axes is None:
         fig, axes = plt.subplots(2, 5, figsize=(10, 6), dpi=150,
                                  #  sharex="col",
@@ -84,6 +84,25 @@ def show_fit_overview_2D(vt, n=None, axes=None, bnd_lines=False, bnd_pnts=False,
                 "You need to pass an array with 2 pyplot axes!")
 
     main_vortex = vt.guess_main_vortex()
+    
+
+    plt.subplots_adjust(hspace=.001, wspace=0.001)
+
+    show_fit_overview_2D_single(vt, "vortensity", ax=axes[1, 0], n=n,
+                                bnd_lines=bnd_lines, bnd_pnts=bnd_pnts,
+                                show_fits=show_fits, fit_contours=fit_contours,
+                                cbar_axes=[axes[1, 0], axes[1, 1]])
+
+    yticklabels = axes[1, 0].get_yticklabels()
+
+    show_fit_overview_2D_single(vt, "surface_density", ax=axes[1, 3], n=n,
+                                bnd_lines=bnd_lines, bnd_pnts=bnd_pnts,
+                                show_fits=show_fits, fit_contours=fit_contours,
+                                cbar_axes=[axes[1, 3], axes[1, 4]])
+
+    for ax in [axes[0, 1], axes[0, 4], axes[0, 2], axes[1, 2]]:
+        ax.axis("off")
+
     if n is None:
         for k in range(len(vt.vortices)):
             if main_vortex == vt.vortices[k]:
@@ -91,23 +110,6 @@ def show_fit_overview_2D(vt, n=None, axes=None, bnd_lines=False, bnd_pnts=False,
                 break
     if n is None:
         n = 0
-
-    plt.subplots_adjust(hspace=.001, wspace=0.001)
-
-    show_fit_overview_2D_single(vt, "vortensity", ax=axes[1, 0],
-                                bnd_lines=bnd_lines, bnd_pnts=bnd_pnts,
-                                show_fits=show_fits, fit_contours=fit_contours,
-                                cbar_axes=[axes[1, 0], axes[1, 1]])
-
-    yticklabels = axes[1, 0].get_yticklabels()
-
-    show_fit_overview_2D_single(vt, "surface_density", ax=axes[1, 3],
-                                bnd_lines=bnd_lines, bnd_pnts=bnd_pnts,
-                                show_fits=show_fits, fit_contours=fit_contours,
-                                cbar_axes=[axes[1, 3], axes[1, 4]])
-
-    for ax in [axes[0, 1], axes[0, 4], axes[0, 2], axes[1, 2]]:
-        ax.axis("off")
 
     if len(vt.vortices) > 0:
         ax = axes[0, 0]
@@ -185,12 +187,15 @@ def show_fit_overview_2D(vt, n=None, axes=None, bnd_lines=False, bnd_pnts=False,
                            rotation=270, fontsize=8)
         ax.set_xlim(left=0)
         ax.set_ylim(-np.pi, np.pi)
+        
+    if xscale is not None:
+        axes[1,0].set_xscale(xscale)
 
     # for ax in [axes[1, 0], axes[1, 3]]:
     #     ax.set_yticklabels(yticklabels)
 
 
-def show_fit_overview_2D_single(vt, varname, ax, bnd_lines=False,
+def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
                                 bnd_pnts=True, show_fits=True, fit_contours=True,
                                 cbar_axes=None):
     import matplotlib.patheffects as pe
@@ -239,10 +244,13 @@ def show_fit_overview_2D_single(vt, varname, ax, bnd_lines=False,
             f"{varname} not supported. Only 'vortensity' and 'sigma'.")
 
     main_vortex = vt.guess_main_vortex()
-    if main_vortex is not None:
-        vortices = [main_vortex] + [v for v in vt.vortices if v != main_vortex]
+    if n is None:
+        if main_vortex is not None:
+            vortices = [main_vortex] + [v for v in vt.vortices if v != main_vortex]
+        else:
+            vortices = []
     else:
-        vortices = []
+        vortices = [vt.vortices[n]]
 
     for n, vort in enumerate(vortices):
         cnt = vort["contour"]
