@@ -441,57 +441,56 @@ def contour_mask(img_shape, boundary_pnts):
     return mask
 
 
-def create_vortex_mask(candidates, supersample, SNy, pad, periodic=False):
+def create_vortex_mask(candidates, supersample, SNy, pad, radii=None, periodic=False):
     # Transform the image from ellipse fitting images back to match the grid
+    # radii is 1d array of radius
+    
+    # map_inds, map_weights = lin_interpolation_indices_weights(radii)
+    
     for candidate in candidates:
+        contour = candidate["detection"]
 
-        if not periodic:
-            contour = candidate["detection"]
-            mask = contour["mask_img"]
-
-            # fit back to original data shape
-            mask = mask.transpose()[:, ::-1]
-            mask = mask[::supersample[0], ::supersample[1]]
-            mask = np.array(mask, dtype=bool)
-            candidate["mask"] = mask
-
-            for key in ["bottom", "top", "left", "right"]:
-                x, y = contour[key + "_img"]
-                y = SNy - y
-                x /= supersample[0]
-                y /= supersample[1]
-                x = int(x)
-                y = int(y)
-                candidate[key] = (x, y)
-        else:
-            contour = candidate["detection"]
+        if periodic:
             mask_img = contour["mask_img"]
             # reduce back to normal image size
             pad_low = pad[0]*supersample[1]
-            pad_up = pad[1]*supersample[1]
             mask_up = mask_img[SNy+pad_low:, :]
             mask_low = mask_img[:pad_low, :]
             mask_pad = np.concatenate([mask_up, mask_low])
             mask_orig = mask_img[pad_low:SNy+pad_low, :]
             mask_reduced = np.logical_or(mask_orig, mask_pad)
+            mask = mask_reduced
+        else:
+            mask = contour["mask_img"]
 
-            # fit back to original data shape
-            mask = mask_reduced.transpose()[:, ::-1]
-            mask = mask[::supersample[0], ::supersample[1]]
-            mask = np.array(mask, dtype=bool)
-            candidate["mask"] = mask
+        # fit back to original data shape
+        mask_linear = mask.transpose()[:, ::-1]
+        mask_linear = mask_linear[::supersample[0], ::supersample[1]]
+        
+        # mask = np.zeros(mask_linear.shape, dtype=bool)
+        # for n, inds, ws in zip(range(len(map_inds)), map_inds, map_weights):
+        #      mask[n,:] = mask_linear[inds[0],:]*ws[1] + mask_linear[inds[1],:]*ws[0] > 0.5
+        # _, axes = plt.subplots(2,1)
+        # axes[0].pcolormesh(mask_linear.transpose())
+        # axes[1].pcolormesh(mask.transpose())
 
-            # map the bounding points to view and data shape
-            for key in ["bottom", "top", "left", "right"]:
+        mask = np.array(mask_linear, dtype=bool)
+
+        # mask = np.array(mask, dtype=bool)
+        candidate["mask"] = mask
+        
+        for key in ["bottom", "top", "left", "right"]:
+            if periodic:
                 pnt = contour[key + "_img"]
                 x, y = map_ext_pnt_to_orig(pnt, SNy, pad_low)
-                y = SNy - y
-                x /= supersample[0]
-                y /= supersample[1]
-                x = int(x)
-                y = int(y)
-                candidate[key] = (x, y)
-
+            else:
+                x, y = contour[key + "_img"]
+            y = SNy - y
+            x /= supersample[0]
+            y /= supersample[1]
+            x = int(x)
+            y = int(y)
+            candidate[key] = (x, y)
 
 def map_ext_pnt_to_orig(pnt, N, pad_low):
     x = pnt[0]
