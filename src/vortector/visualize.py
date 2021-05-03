@@ -101,61 +101,65 @@ def show_fit_overview_2D(vt, n=None, axes=None, bnd_lines=False, bnd_pnts=False,
 
     yticklabels = axes[1, 0].get_yticklabels()
 
-    ax = axes[0, 0]
-    show_radial_fit(vt, ax, "vortensity", n, ref="contour")
-
-    ax = axes[1, 1]
-    show_azimuthal_fit(vt, ax, "vortensity", n, ref="contour")
-
     show_fit_overview_2D_single(vt, "surface_density", ax=axes[1, 3],
                                 bnd_lines=bnd_lines, bnd_pnts=bnd_pnts,
                                 show_fits=show_fits, fit_contours=fit_contours,
                                 cbar_axes=[axes[1, 3], axes[1, 4]])
-    ax = axes[0, 3]
-    show_radial_fit(vt, ax, "surface_density", n, ref="contour")
-
-    ax = axes[1, 4]
-    show_azimuthal_fit(vt, ax, "surface_density", n, ref="contour")
-    switch_axes_xy(ax)
 
     for ax in [axes[0, 1], axes[0, 4], axes[0, 2], axes[1, 2]]:
         ax.axis("off")
 
-    sharex = [0, 3, 5, 8]
-    sharey = [5, 6, 8, 9]
-    axes_flat = axes.ravel()
-    for n in range(1, 4):
-        axes_flat[sharex[n]].sharex(axes_flat[sharex[n-1]])
-        axes_flat[sharey[n]].sharey(axes_flat[sharey[n-1]])
+    if len(vt.vortices) > 0:
+        ax = axes[0, 0]
+        show_radial_fit(vt, ax, "vortensity", n, ref="contour")
+
+        ax = axes[1, 1]
+        show_azimuthal_fit(vt, ax, "vortensity", n, ref="contour")
+
+        ax = axes[0, 3]
+        show_radial_fit(vt, ax, "surface_density", n, ref="contour")
+
+        ax = axes[1, 4]
+        show_azimuthal_fit(vt, ax, "surface_density", n, ref="contour")
+        switch_axes_xy(ax)
+
+        sharex = [0, 3, 5, 8]
+        sharey = [5, 6, 8, 9]
+        axes_flat = axes.ravel()
+        for n in range(1, 4):
+            axes_flat[sharex[n]].sharex(axes_flat[sharex[n-1]])
+            axes_flat[sharey[n]].sharey(axes_flat[sharey[n-1]])
 
     ax = axes[0, 0]
-    ax.set_ylim(-0.5, 1)
     ax.tick_params(labelbottom=False)
     ax.set_xlabel("")
     ax.set_ylabel("")
     leg = ax.get_legend()
     if leg is not None:
         leg.remove()
-    xticks = ax.get_yticks()
-    vallim = ax.get_ylim()
-    try:
-        x = ax.get_lines()[0].get_data()[0]
-        ax.set_xlim(np.min(x), np.max(x))
-    except IndexError:
-        pass
+    if len(vt.vortices) > 0:
+        ax.set_ylim(-0.5, 1)
+        xticks = ax.get_yticks()
+        vallim = ax.get_ylim()
+        try:
+            x = ax.get_lines()[0].get_data()[0]
+            ax.set_xlim(np.min(x), np.max(x))
+        except IndexError:
+            pass
 
     ax = axes[1, 1]
-    switch_axes_xy(ax)
     leg = ax.get_legend()
     if leg is not None:
         leg.remove()
     ax.set_xlabel("")
     ax.set_ylabel("")
     ax.tick_params(labelleft=False)
-    ax.set_xticks(xticks)
-    ax.set_xticklabels([f"{x:.1f}" for x in xticks], rotation=270)
-    ax.set_ylim(-np.pi, np.pi)
-    ax.set_xlim(vallim)
+    if len(vt.vortices) > 0:
+        switch_axes_xy(ax)
+        ax.set_xticks(xticks)
+        ax.set_xticklabels([f"{x:.1f}" for x in xticks], rotation=270)
+        ax.set_ylim(-np.pi, np.pi)
+        ax.set_xlim(vallim)
 
     ax = axes[0, 3]
     ax.tick_params(labelbottom=False)
@@ -164,8 +168,9 @@ def show_fit_overview_2D(vt, n=None, axes=None, bnd_lines=False, bnd_pnts=False,
     leg = ax.get_legend()
     if leg is not None:
         leg.remove()
-    xticks = ax.get_yticks()
-    ax.set_ylim(bottom=0)
+    if len(vt.vortices) > 0:
+        xticks = ax.get_yticks()
+        ax.set_ylim(bottom=0)
 
     ax = axes[1, 4]
     leg = ax.get_legend()
@@ -174,11 +179,12 @@ def show_fit_overview_2D(vt, n=None, axes=None, bnd_lines=False, bnd_pnts=False,
     ax.set_xlabel("")
     ax.set_ylabel("")
     ax.tick_params(labelleft=False)
-    ax.set_xticks(xticks)
-    ax.set_xticklabels([f"{x:.1e}" for x in xticks],
-                       rotation=270, fontsize=8)
-    ax.set_xlim(left=0)
-    ax.set_ylim(-np.pi, np.pi)
+    if len(vt.vortices) > 0:
+        ax.set_xticks(xticks)
+        ax.set_xticklabels([f"{x:.1e}" for x in xticks],
+                           rotation=270, fontsize=8)
+        ax.set_xlim(left=0)
+        ax.set_ylim(-np.pi, np.pi)
 
     # for ax in [axes[1, 0], axes[1, 3]]:
     #     ax.set_yticklabels(yticklabels)
