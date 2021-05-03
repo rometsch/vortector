@@ -220,7 +220,7 @@ def show_fit_overview_2D_single(vt, varname, ax, bnd_lines=False,
         #     vmax = np.max(Z)
 
         vmax = np.max(Z)
-        vmin = min(1e-5*vmax, np.min(Z))
+        vmin = 1e-3*vmax
 
         norm = matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax)
         img = ax.pcolormesh(
