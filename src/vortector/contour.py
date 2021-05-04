@@ -128,7 +128,6 @@ def contour_image_dimensions(img_shape, min_image_size=1000, verbose=False):
         raise ValueError(
             f"Shape of data is zero in one direction: (Nx, Ny) = ({Nx}, {Ny})")
     int_aspect = np.round(max(Nx, Ny)/min(Nx, Ny))
-    print("int_aspect", int_aspect)
     int_aspect = int(int_aspect)
 
     supersample = [1, 1]
