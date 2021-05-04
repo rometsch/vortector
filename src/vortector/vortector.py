@@ -41,7 +41,7 @@ class Vortector:
         if self.verbose:
             print(*args, **kwargs)
 
-    def detect(self, include_mask=False, keep_internals=False, linear_radius=False):
+    def detect(self, include_mask=False, keep_internals=False, linear_radius=False, **kwargs):
 
         if linear_radius:
             contour_data, reverse_trafo, trafo = interpolate_to_linear(self.vortensity, self.radius)
@@ -54,7 +54,8 @@ class Vortector:
             self.mear,
             self.med,
             verbose=self.verbose,
-            periodic=True)
+            periodic=True,
+            **kwargs)
 
         if linear_radius:
             for c in self.candidates:

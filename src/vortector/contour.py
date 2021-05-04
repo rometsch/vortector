@@ -3,7 +3,7 @@ import cv2
 import matplotlib.pyplot as plt
 
 
-def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse_deviation, periodic=True, verbose=False):
+def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse_deviation, periodic=True, blur=None, verbose=False):
     """ Detect closed equivalue lines in a 2D contour plot of the data.
 
     1. create a contour line image of the data
@@ -21,6 +21,8 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
         Maximum aspect ratio for ellipses.
     max_ellipse_deviation : float
         Maximum threshold for the deviation of a contour area to the fitted ellipse.
+    blur : int
+        Width of the gaussian filter. Default None
     verbose : bool
         Verbose output. Default False.
 
@@ -30,6 +32,9 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
         Dictionary of the candidate contours with information stored in dictionaries. 
     """
     min_img_size = 1000  # config value
+
+    if blur is not None:
+        data = gaussian_blur(data, blur)
 
     Nx, Ny, SNx, SNy, int_aspect, supersample = contour_image_dimensions(
         data.shape, min_image_size=min_img_size, verbose=verbose)
@@ -76,6 +81,10 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     remove_empty_contours(candidates)
 
     return candidates
+
+def gaussian_blur(data, sigma):
+    from scipy.ndimage import gaussian_filter
+    return gaussian_filter(data, sigma)
 
 
 def remove_boundary_cases(candidates, shape):
