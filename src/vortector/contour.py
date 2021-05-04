@@ -46,8 +46,11 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     remove_boundary_cases(contours_closed, thresh.shape)
     if periodic:
         remove_periodic_duplicates(contours_closed, SNy)
+        
+    deviation_method = "semianalytic" # configvalue
     contours = extract_ellipse_contours(
-        thresh.shape, contours_closed, max_ellipse_deviation)
+        thresh.shape, contours_closed, max_ellipse_deviation,
+        deviation_method=deviation_method)
 
     generate_ancestors(contours, hierarchy)
     generate_descendants(contours)
@@ -293,16 +296,21 @@ def remove_periodic_duplicates(closed_contours, SNy):
         del closed_contours[n-k]
 
 
-def extract_ellipse_contours(img_shape, contours_closed, max_ellipse_deviation):
+def extract_ellipse_contours(img_shape, contours_closed, max_ellipse_deviation, deviation_method="semianalytic"):
     # Extract contours that match an ellipse
 
     candidates = dict()
     for contour in contours_closed:
         cnt = contour["boundary"]
         ellipse = cv2.fitEllipse(cnt)
-        # rel_delta, delta = ellipse_deviation_draw(cnt, ellipse, contour["pixel_area"])
-        rel_delta, delta = ellipse_deviation_semianalytic(
-            cnt, ellipse, contour["pixel_area"])
+        if deviation_method == "semianalytic":
+            rel_delta, delta = ellipse_deviation_semianalytic(
+                cnt, ellipse, contour["pixel_area"])
+        elif deviation_method == "draw":
+            rel_delta, delta = ellipse_deviation_draw(cnt, ellipse, contour["pixel_area"])
+        else:
+            ValueError(f"Method for estimating ellipse deviation does not exist: '{deviation_method}'")
+        
 
         if rel_delta > max_ellipse_deviation:
             continue
