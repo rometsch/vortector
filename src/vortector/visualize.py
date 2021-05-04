@@ -3,6 +3,7 @@ import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors
+import matplotlib.gridspec as gridspec
 
 from .gaussfit import gauss
 
@@ -72,19 +73,23 @@ def show_fit_overview_1D(vt, n, axes=None):
     show_azimuthal_fit(vt, ax, key, n, ref=ref, center=center)
 
 
-def show_fit_overview_2D(vt, n=None, axes=None, bnd_lines=False, bnd_pnts=False, show_fits=True, fit_contours=True, xscale=None):
-    if axes is None:
-        fig, axes = plt.subplots(2, 5, figsize=(10, 6), dpi=150,
+def show_fit_overview_2D(vt, n=None, fig=None, bnd_lines=False, bnd_pnts=False, show_fits=True, fit_contours=True, xscale=None):
+    if fig is None:
+        fig, axes = plt.subplots(2, 5, figsize=(12, 8), dpi=150,
                                  #  sharex="col",
                                  gridspec_kw={"height_ratios": [1, 4],
                                               "width_ratios": [3, 1, 1, 3, 1]})
     else:
-        if len(axes) != 8:
-            raise ValueError(
-                "You need to pass an array with 2 pyplot axes!")
+        fig.clf()
+        gs = gridspec.GridSpec(ncols=5, nrows=2, figure=fig, height_ratios=[
+                               1, 4], width_ratios=[3, 1, 1, 3, 1])
+        axes = []
+        for nr in [0, 1]:
+            for nc in range(5):
+                axes.append(fig.add_subplot(gs[nr, nc]))
+        axes = np.array(axes).reshape((2, 5))
 
     main_vortex = vt.guess_main_vortex()
-    
 
     plt.subplots_adjust(hspace=.001, wspace=0.001)
 
@@ -99,6 +104,7 @@ def show_fit_overview_2D(vt, n=None, axes=None, bnd_lines=False, bnd_pnts=False,
                                 bnd_lines=bnd_lines, bnd_pnts=bnd_pnts,
                                 show_fits=show_fits, fit_contours=fit_contours,
                                 cbar_axes=[axes[1, 3], axes[1, 4]])
+    axes[1, 3].set_ylabel(None)
 
     for ax in [axes[0, 1], axes[0, 4], axes[0, 2], axes[1, 2]]:
         ax.axis("off")
@@ -187,12 +193,12 @@ def show_fit_overview_2D(vt, n=None, axes=None, bnd_lines=False, bnd_pnts=False,
                            rotation=270, fontsize=8)
         ax.set_xlim(left=0)
         ax.set_ylim(-np.pi, np.pi)
-        
-    if xscale is not None:
-        axes[1,0].set_xscale(xscale)
 
-    # for ax in [axes[1, 0], axes[1, 3]]:
-    #     ax.set_yticklabels(yticklabels)
+    if xscale is not None:
+        axes[1, 0].set_xscale(xscale)
+
+    for ax in [axes[1, 0], axes[1, 3]]:
+        ax.set_yticklabels(yticklabels)
 
 
 def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
@@ -246,7 +252,8 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
     main_vortex = vt.guess_main_vortex()
     if n is None:
         if main_vortex is not None:
-            vortices = [main_vortex] + [v for v in vt.vortices if v != main_vortex]
+            vortices = [main_vortex] + \
+                [v for v in vt.vortices if v != main_vortex]
         else:
             vortices = []
     else:
