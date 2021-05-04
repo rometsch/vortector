@@ -41,18 +41,14 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     thresh, pad = contour_image(
         SNx, SNy, data, levels, min_image_size=min_img_size, periodic=periodic)
 
-    _, ax = plt.subplots()
-
-    ax.imshow(thresh)
-
     contours_largest, hierarchy = find_contours(thresh, verbose=verbose)
     contours_closed = extract_closed_contours(
         thresh, contours_largest, max_ellipse_aspect_ratio, verbose=verbose)
     remove_boundary_cases(contours_closed, thresh.shape)
     if periodic:
         remove_periodic_duplicates(contours_closed, SNy)
-        
-    deviation_method = "semianalytic" # configvalue
+
+    deviation_method = "semianalytic"  # configvalue
     contours = extract_ellipse_contours(
         thresh.shape, contours_closed, max_ellipse_deviation,
         deviation_method=deviation_method)
@@ -81,6 +77,7 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     remove_empty_contours(candidates)
 
     return candidates
+
 
 def gaussian_blur(data, sigma):
     from scipy.ndimage import gaussian_filter
@@ -128,8 +125,9 @@ def contour_image_dimensions(img_shape, min_image_size=1000, verbose=False):
 
     Nx, Ny = img_shape
     if Nx == 0 or Ny == 0:
-        raise ValueError(f"Shape of data is zero in one direction: (Nx, Ny) = ({Nx}, {Ny})")
-    int_aspect = np.round(max(Nx, Ny)/min(Nx,Ny))
+        raise ValueError(
+            f"Shape of data is zero in one direction: (Nx, Ny) = ({Nx}, {Ny})")
+    int_aspect = np.round(max(Nx, Ny)/min(Nx, Ny))
     print("int_aspect", int_aspect)
     int_aspect = int(int_aspect)
 
@@ -320,10 +318,11 @@ def extract_ellipse_contours(img_shape, contours_closed, max_ellipse_deviation, 
             rel_delta, delta = ellipse_deviation_semianalytic(
                 cnt, ellipse, contour["pixel_area"])
         elif deviation_method == "draw":
-            rel_delta, delta = ellipse_deviation_draw(cnt, ellipse, contour["pixel_area"])
+            rel_delta, delta = ellipse_deviation_draw(
+                cnt, ellipse, contour["pixel_area"])
         else:
-            ValueError(f"Method for estimating ellipse deviation does not exist: '{deviation_method}'")
-        
+            ValueError(
+                f"Method for estimating ellipse deviation does not exist: '{deviation_method}'")
 
         if rel_delta > max_ellipse_deviation:
             continue
