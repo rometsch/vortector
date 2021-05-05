@@ -119,16 +119,20 @@ def show_fit_overview_2D(vt, n=None, fig=None, bnd_lines=False, bnd_pnts=False, 
 
     if len(vt.vortices) > 0:
         ax = axes[0, 0]
-        show_radial_fit(vt, ax, "vortensity", n, ref="contour")
+        show_radial_fit(vt, ax, "vortensity", n, ref="contour",
+                        fitcolor="C0", datacolor="C1")
 
         ax = axes[1, 1]
-        show_azimuthal_fit(vt, ax, "vortensity", n, ref="contour")
+        show_azimuthal_fit(vt, ax, "vortensity", n, ref="contour",
+                           fitcolor="C0", datacolor="C1")
 
         ax = axes[0, 3]
-        show_radial_fit(vt, ax, "surface_density", n, ref="contour")
+        show_radial_fit(vt, ax, "surface_density", n, ref="contour",
+                        fitcolor="C2", datacolor="C1")
 
         ax = axes[1, 4]
-        show_azimuthal_fit(vt, ax, "surface_density", n, ref="contour")
+        show_azimuthal_fit(vt, ax, "surface_density", n, ref="contour",
+                           fitcolor="C2", datacolor="C1")
         switch_axes_xy(ax)
 
         sharex = [0, 3, 5, 8]
@@ -397,7 +401,7 @@ def vortex_mask_r(vt, c, hw):
     return mask
 
 
-def show_radial_fit(vt, ax, key, n, ref="contour", center=None):
+def show_radial_fit(vt, ax, key, n, ref="contour", fitcolor="C1", datacolor="C0", center=None):
     """ Show a plot of a radial gaussian fit for the nth vortex.
 
     Parameters
@@ -429,8 +433,7 @@ def show_radial_fit(vt, ax, key, n, ref="contour", center=None):
         y = vals[:, inds[1]]
         x = vt.radius[:, 0]
 
-        ax.plot(x, y, label=f"data slice n={n}")
-        ax.plot(x[mask], y[mask], label="vortex region")
+        ax.plot(x, y, label=f"data slice n={n}", color=datacolor)
 
         y0 = vortex["fits"][key]["c"]
         x0 = vortex["fits"][key]["r0"]
@@ -439,8 +442,8 @@ def show_radial_fit(vt, ax, key, n, ref="contour", center=None):
         popt = [y0, a, x0, sig]
 
         ax.plot(x[mask], gauss(x[mask], *popt),
-                ls="--", color="C2", lw=2, label=f"fit")
-        ax.plot(x, gauss(x, *popt), color="C3", alpha=0.3)
+                color=fitcolor, lw=2, label=f"fit")
+        ax.plot(x, gauss(x, *popt), color=fitcolor, lw=1, alpha=0.7)
         ax.plot([x0], [y[inds[0]]], "x")
     except KeyError as e:
         print(f"Warning: KeyError encountered in showing r fit: {e}")
@@ -452,7 +455,7 @@ def show_radial_fit(vt, ax, key, n, ref="contour", center=None):
     ax.grid()
 
 
-def show_azimuthal_fit(vt, ax, key, n, ref="contour", center=None):
+def show_azimuthal_fit(vt, ax, key, n, ref="contour", fitcolor="C1", datacolor="C0", center=None):
     """ Show a plot of a azimuthal gaussian fit for the nth vortex.
 
     Parameters
@@ -483,8 +486,7 @@ def show_azimuthal_fit(vt, ax, key, n, ref="contour", center=None):
         y = vals[inds[0], :]
         x = vt.azimuth[0, :]
 
-        ax.plot(x, y, label=f"data slice n={n}")
-        plot_periodic(ax, x, y, mask, label="vortex region")
+        ax.plot(x, y, label=f"data slice n={n}", color=datacolor)
         y0 = c["fits"][key]["c"]
         x0 = c["fits"][key]["phi0"]
         a = c["fits"][key]["a"]
@@ -501,12 +503,14 @@ def show_azimuthal_fit(vt, ax, key, n, ref="contour", center=None):
             x0 -= L
         popt = [y0, a, x0, sig]
 
+        if fitcolor is None:
+            fitcolor = "C2"
         plot_periodic(ax, xc, gauss(xc, *popt), bnd=bnd,
-                      ls="--", lw=2, color="C2", label=f"fit")
+                      ls="-", lw=2, color=fitcolor, label=f"fit")
 
         xfull = np.linspace(x0-L/2, x0+L/2, endpoint=True)
         plot_periodic(ax, xfull, gauss(xfull, *popt), bnd=bnd,
-                      ls="-", lw=1, color="C3", alpha=0.3)
+                      ls="-", lw=1, color=fitcolor, alpha=0.7)
         ax.plot([clamp_periodic(x0, bnd)], y[[inds[1]]], "x")
     except KeyError as e:
         print(f"Warning: KeyError encountered in showing phi fit: {e}")
