@@ -36,34 +36,33 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     if blur is not None:
         data = gaussian_blur(data, blur)
 
-    Nx, Ny, SNx, SNy, int_aspect, supersample = contour_image_dimensions(
-        data.shape, min_image_size=min_img_size, verbose=verbose)
-    thresh, pad = contour_image(
-        SNx, SNy, data, levels, min_image_size=min_img_size, periodic=periodic)
+    Nx, Ny = data.shape
+    data, pad = extend_array(data)
+    data = data.T
+    
+    print("data.shape", data.shape)
+    print("pad", pad)
 
-    contours_largest, hierarchy = find_contours(thresh, verbose=verbose)
+
+    contours_largest = find_contours(data, levels, verbose=verbose)
     contours_closed = extract_closed_contours(
-        thresh, contours_largest, max_ellipse_aspect_ratio, verbose=verbose)
-    remove_boundary_cases(contours_closed, thresh.shape)
+        pad, Nx, Ny, contours_largest, max_ellipse_aspect_ratio, verbose=verbose)
+    remove_boundary_cases(contours_closed, data.shape)
     if periodic:
-        remove_periodic_duplicates(contours_closed, SNy)
+        remove_periodic_duplicates(contours_closed, Ny, pad)
 
     deviation_method = "semianalytic"  # configvalue
     contours = extract_ellipse_contours(
-        thresh.shape, contours_closed, max_ellipse_deviation,
+        data.shape, contours_closed, max_ellipse_deviation,
         deviation_method=deviation_method)
 
-    generate_ancestors(contours, hierarchy)
-    generate_descendants(contours)
-    prune_candidates_by_hierarchy(contours)
+    # generate_ancestors(contours, hierarchy)
+    # generate_descendants(contours)
+    # prune_candidates_by_hierarchy(contours)
 
     parameters = {
         "Nx": Nx,
         "Ny": Ny,
-        "SNx": SNx,
-        "SNy": SNy,
-        "int_aspect": int_aspect,
-        "supersample": supersample,
         "max_ellipse_aspect_ratio": max_ellipse_aspect_ratio,
         "max_ellipse_deviation": max_ellipse_deviation,
         "levels": [float(x) for x in levels]
@@ -73,7 +72,7 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
         contour["parameters"] = parameters
 
     candidates = [{"detection": contour} for contour in contours.values()]
-    create_vortex_mask(candidates, supersample, Ny, pad, periodic=periodic)
+    create_vortex_mask(candidates, Ny, pad, periodic=periodic)
     remove_empty_contours(candidates)
 
     return candidates
@@ -83,6 +82,14 @@ def gaussian_blur(data, sigma):
     from scipy.ndimage import gaussian_filter
     return gaussian_filter(data, sigma)
 
+
+def extend_array(data):
+    """ Periodically extend the array in y direction. """
+    Nx, Ny = data.shape
+    pad_low = Ny//2
+    pad_up = Ny - pad_low
+    extended = np.pad(data, ((0,0), (pad_low, pad_up)) , mode="wrap")
+    return extended, (pad_low, pad_up)
 
 def remove_boundary_cases(candidates, shape):
     """ Remove contours which overlap with the boundary.
@@ -127,29 +134,11 @@ def contour_image_dimensions(img_shape, min_image_size=1000, verbose=False):
     if Nx == 0 or Ny == 0:
         raise ValueError(
             f"Shape of data is zero in one direction: (Nx, Ny) = ({Nx}, {Ny})")
-    int_aspect = np.round(max(Nx, Ny)/min(Nx, Ny))
-    int_aspect = int(int_aspect)
+    int_aspect = 1
 
     supersample = [1, 1]
-    if int_aspect >= 2:
-        if Nx < Ny:
-            supersample[0] *= int_aspect
-        else:
-            supersample[1] *= int_aspect
-
     SNx = Nx * supersample[0]
     SNy = Ny * supersample[1]
-
-    if min(SNx, SNy) < min_image_size:
-        k = int(np.ceil(min_image_size/min(SNx, SNy)))
-        supersample[0] *= k
-        supersample[1] *= k
-        SNx = Nx * supersample[0]
-        SNy = Ny * supersample[1]
-
-    if verbose:
-        print(
-            f"Contour image dimensions: Nx {Nx}, Ny {Ny}, int_aspect {int_aspect}, supersample {supersample}, SNx {SNx}, SNy {SNy}")
 
     return Nx, Ny, SNx, SNy, int_aspect, supersample
 
@@ -200,37 +189,45 @@ def contour_image(SNx, SNy, vortensity, levels, min_image_size=1000, periodic=Fa
 
     return thresh, pad
 
+def contour_threshold(data, threshold):
+    image = data < threshold
+    image = image / np.max(image) * 255
+    image = image.astype(np.uint8)
+    contours, _ = cv2.findContours(image,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    return contours
 
-def find_contours(thresh, verbose=False):
+def find_contours(data, levels, verbose=False):
     # Extract contours and construct hierarchy
 
-    contours, hierarchy = cv2.findContours(
-        thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+    contours = []
+    for n, th in enumerate(levels):
+        rv = contour_threshold(data, th)
+        for k,bnd in enumerate(rv):
+            d = {
+                "boundary" : bnd,
+                "value" : th,
+                "opencv_contour_number": 1000*n + k
+            }
+            contours.append(d)
+                
 
     if verbose:
         print("Number of found contours:", len(contours))
 
-    contours_dict = {n: {"boundary": cnt, "opencv_contour_number": n}
-                     for n, cnt in enumerate(contours)}
-
-    areas = [cv2.contourArea(c) for c in contours]
-    for n, d in enumerate(contours_dict.values()):
-        d["pixel_area"] = areas[n]
-
-    sort_inds = np.argsort(areas)
+    for d in contours:
+        d["pixel_area"] = cv2.contourArea(d["boundary"])
 
     # take the up to 100 largest patches
-    contours_largest = [contours_dict[i]
-                        for i in [n for n in sort_inds[::-1]][:100]]
+    contours_largest = sorted(contours, key = lambda x : -x["pixel_area"])[:1000]
 
-    return contours_largest, hierarchy
+    return contours_largest
 
 
-def extract_closed_contours(thresh, contours_largest, max_ellipse_aspect_ratio, verbose=False):
+def extract_closed_contours(pad, Nx, Ny, contours_largest, max_ellipse_aspect_ratio, verbose=False):
     # Extract closed contours
 
     contours_closed = []
-    for n, contour in enumerate(contours_largest):
+    for contour in contours_largest:
         cnt = contour["boundary"]
         l = cv2.arcLength(cnt, True)
         contour["pixel_arcLength"] = l
@@ -255,19 +252,22 @@ def extract_closed_contours(thresh, contours_largest, max_ellipse_aspect_ratio, 
         contour["dx_img"] = dx
         contour["dy_img"] = dy
 
-        Nh = int(thresh.shape[0]/2)
-        Nq = int(thresh.shape[0]/4)
-
         # sort out mirrors of contours fully contained in original area
-        if bottommost[1] < Nq or topmost[1] > 3*Nq:
-            continue
+        # if bottommost[1] < pad[0] or topmost[1] > Ny+pad[1]:
+        #     continue
 
         is_not_too_elongated = dx > 0 and dy > 0 and max(
             dx/dy, dy/dx) < max_ellipse_aspect_ratio
-        is_area_larget_delimiter = l > 0 and a > l
-        is_not_spanning_whole_height = dy < 0.5*0.95*thresh.shape[0]
-
-        if not(is_not_too_elongated and is_area_larget_delimiter and is_not_spanning_whole_height):
+        is_area_larger_delimiter = l > 0 and a > l
+        is_not_spanning_whole_height = dy < 0.5*0.95*Ny
+        if not is_not_too_elongated:
+            print("discarding because is_not_too_elongated")
+            continue
+        if not is_area_larger_delimiter:
+            print("discarding because is_area_larget_delimiter")
+            continue
+        if not is_not_spanning_whole_height:
+            print("discarding because is_not_spanning_whole_height")
             continue
 
         contours_closed.append(contour)
@@ -280,8 +280,7 @@ def extract_closed_contours(thresh, contours_largest, max_ellipse_aspect_ratio, 
     return contours_closed
 
 
-def remove_periodic_duplicates(closed_contours, SNy):
-    Nh = SNy // 2
+def remove_periodic_duplicates(closed_contours, Ny, pad):
     indices_to_delete = []
     for n, contour in enumerate(closed_contours):
         # sort out the lower of mirror images
@@ -294,7 +293,7 @@ def remove_periodic_duplicates(closed_contours, SNy):
                 continue
             same_hor = (bounding_hor == other["bounding_hor_img"]).all()
             same_vert = (np.abs(bounding_vert %
-                                Nh - other["bounding_vert_img"] % Nh) < 20).all()
+                                Ny - other["bounding_vert_img"] % Ny) < 20).all()
             if same_hor and same_vert:
                 if other["bounding_vert_img"][1] > bounding_vert[1]:
                     indices_to_delete.append(k)
@@ -469,39 +468,43 @@ def contour_mask(img_shape, boundary_pnts):
     return mask
 
 
-def create_vortex_mask(candidates, supersample, Ny, pad, periodic=False):
+def create_vortex_mask(candidates, Ny, pad, periodic=False):
     # Transform the image from ellipse fitting images back to match the grid
 
     for candidate in candidates:
         contour = candidate["detection"]
         mask = contour["mask_img"]
-
+        print("mask.shape", mask.shape)
         # fit back to original data shape
-        mask = mask.transpose()[:, ::-1]
-        mask = mask[::supersample[0], ::supersample[1]]
+        # mask = mask.transpose()[:, ::-1]
+        mask = mask.transpose()
         mask = np.array(mask, dtype=bool)
-
         if periodic:
             pad_low = pad[0]
+            print("pad_low",pad_low)
+            print("mask.shape", mask.shape)
+            print("Ny+pad_low", Ny+pad_low)
             mask_up = mask[:, Ny+pad_low:]
             mask_low = mask[:, :pad_low]
             mask_pad = np.concatenate([mask_up, mask_low], axis=1)
             mask_orig = mask[:, pad_low:Ny+pad_low]
+            print("mask_low.shape", mask_low.shape)
+            print("mask_up.shape", mask_up.shape)
+            print("mask_pad.shape", mask_pad.shape)
+            print("mask_orig.shape", mask_orig.shape)
+            
             mask_reduced = np.logical_or(mask_orig, mask_pad)
             mask = mask_reduced
 
         candidate["mask"] = mask
 
-        SNy = Ny*supersample[1]
         for key in ["bottom", "top", "left", "right"]:
             if periodic:
                 pnt = contour[key + "_img"]
-                x, y = map_ext_pnt_to_orig(pnt, SNy, pad_low*supersample[1])
+                x, y = map_ext_pnt_to_orig(pnt, Ny, pad_low)
             else:
                 x, y = contour[key + "_img"]
-            y = SNy - y
-            x /= supersample[0]
-            y /= supersample[1]
+            y = Ny - y
             x = int(np.round(x))
             y = int(np.round(y))
             candidate[key] = (x, y)
