@@ -283,10 +283,11 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
                 ax.axhline(cnt[key])
 
         if bnd_pnts:
-            for key in ["top", "bottom", "left", "right"]:
+            for key in ["pnt_xlow", "pnt_ylow", "pnt_xhigh", "pnt_yhigh"]:
                 x = Xc[cnt[key]]
                 y = Yc[cnt[key]]
-                ax.plot([x], [y], "x")
+                ax.scatter([x], [y], color="black", edgecolor="white")
+                # ax.annotate(key, (x,y))
 
         blow = -np.pi
         bup = np.pi
