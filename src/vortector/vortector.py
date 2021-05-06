@@ -8,7 +8,7 @@ from .interpolation import *
 
 class Vortector:
     def __init__(self, radius, azimuth, area, vortensity, surface_density,
-                 levels=[float(x) for x in np.arange(-1, 1.5, 0.05)],
+                 levels=None,
                  med=0.15, mear=np.inf, mvd=0.01, verbose=False, azimuthal_boundaries=[-np.pi, np.pi]):
 
         self.vortensity = vortensity
@@ -27,6 +27,8 @@ class Vortector:
         }
 
         # Parameters
+        if levels is None:
+            levels = np.linspace(-1, 1, 41)
         self.levels = levels
         self.med = med  # max_ellipse_deviation
         self.mear = mear  # max_ellipse_aspect_ratio
