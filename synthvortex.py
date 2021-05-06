@@ -1,6 +1,8 @@
 import os
 import numpy as np
 from numpy.random import default_rng
+import pickle
+import types
 
 try:
     from opensimplex import OpenSimplex
@@ -11,8 +13,12 @@ except ImportError:
 
 class VortexGenerator:
 
-    def __init__(self, Nvortices, Nr=121, Nphi=251, rmin=1, rmax=20, phimin=-np.pi, phimax=np.pi, c_dens=1,
-                 a_dens=3, a_vort=-1.5, noise=0.05, seed=None, periodic_x=False, periodic_y=False):
+    def __init__(self, Nvortices=1, Nr=121, Nphi=251, rmin=1, rmax=20, phimin=-np.pi, phimax=np.pi, c_dens=1,
+                 a_dens=3, a_vort=-1.5, noise=0.05, seed=None, periodic_x=False, periodic_y=False, filename=None):
+        if filename is not None:
+            self.load(filename)
+            return
+
         self.Nr = Nr
         self.Nphi = Nphi
         self.rmin = rmin
@@ -136,6 +142,26 @@ class VortexGenerator:
         self.Rs = Rs
         self.Phis = Phis
         self.Area = Area
+
+    def save(self, filename, note=None):
+        """Save the data to a file for later use."""
+        data = dict()
+        for key in dir(self):
+            if not key[0] == "_" and not isinstance(getattr(self, key), types.FunctionType):
+                data[key] = getattr(self, key)
+        with open(filename, "wb") as outfile:
+            pickle.dump(data, outfile)
+        if note is not None:
+            with open(filename+".txt", "w") as notefile:
+                print(note, file=notefile)
+                print(f"seed = {self.seed}", file=notefile)
+
+    def load(self, filename):
+        """Load data from a file saved earlier."""
+        with open(filename, "rb") as infile:
+            data = pickle.load(infile)
+        for key in data:
+            setattr(self, key, data[key])
 
 
 if OpenSimplex is not None:
