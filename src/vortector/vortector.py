@@ -9,7 +9,7 @@ from .interpolation import *
 class Vortector:
     def __init__(self, radius, azimuth, area, vortensity, surface_density,
                  levels=None,
-                 med=0.15, mear=np.inf, mvd=0.01, verbose=False, azimuthal_boundaries=[-np.pi, np.pi]):
+                 med=0.15, mear=np.inf, mvd=0.1, verbose=False, azimuthal_boundaries=[-np.pi, np.pi]):
 
         self.vortensity = vortensity
 
