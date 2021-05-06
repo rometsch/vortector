@@ -50,9 +50,9 @@ def gauss2D(v, c, a, x0, y0, sx, sy):
         Function values.  
     """
     x, y = v
-    ex = np.exp(-(x - x0)**2 / (2 * sx**2))
-    ey = np.exp(-(y - y0)**2 / (2 * sy**2))
-    return c + a*ex*ey
+    argx = -(x - x0)**2 / (2 * sx**2)
+    argy = -(y - y0)**2 / (2 * sy**2)
+    return c + a*np.exp(argx+argy)
 
 
 def extract_fit_values(contour, r, phi, vals, reference_point, periodicity=None):
@@ -214,6 +214,7 @@ class Gauss2DFitter:
         self.p0 = p0
 
     def fit(self):
+        self.guess_p0()
         popt, pcov = self.fit_single()
 
         if self.weights is None and self.autoweight:
@@ -235,8 +236,6 @@ class Gauss2DFitter:
             np.exp(-(dx/sx)**2 - (dy/sy)**2)
 
     def fit_single(self):
-        self.guess_p0()
-
         x = self.x
         y = self.y
         z = self.z
