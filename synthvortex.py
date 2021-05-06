@@ -54,7 +54,6 @@ class VortexGenerator:
             vorticity += a_vort*profile
             density += a_dens*profile
             if self.periodic_x:
-                print("adding extra vortex in x")
                 Dx = self.Lr if r0 < 0.5*(self.rmin + self.rmax) else -self.Lr
                 ex_per = np.exp(- 0.5*(self.Rs - (r0+Dx))**2/sigma_r**2)
                 profile = ex_per*ey
@@ -102,7 +101,6 @@ class VortexGenerator:
         if seed is None:
             seed = 0
 
-        print("r0", r0)
         self.vortex_params.append(
             [r0, sigma_r, phi0, sigma_phi, a_vort, a_dens]
         )
