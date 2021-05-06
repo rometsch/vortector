@@ -111,7 +111,8 @@ def fit_2D_gaussian_surface_density(contour, r, phi, vals, reference_point, peri
             p[3] -= L
 
     fit = {"c": p[0], "a": p[1], "r0": p[2], "phi0": p[3],
-           "sigma_r": p[4], "sigma_phi": p[5], "popt": p, "pcov": cov}
+           "sigma_r": p[4], "sigma_phi": p[5], "popt": p, "pcov": cov,
+           "bounds_low": fitter.blow, "bounds_high" : fitter.bup}
     return fit
 
 
@@ -137,7 +138,8 @@ def fit_2D_gaussian_vortensity(contour, r, phi, vals, reference_point, periodici
             p[3] -= L
 
     fit = {"c": p[0], "a": p[1], "r0": p[2], "phi0": p[3],
-           "sigma_r": p[4], "sigma_phi": p[5], "popt": p, "pcov": cov}
+           "sigma_r": p[4], "sigma_phi": p[5], "popt": p, "pcov": cov,
+           "bounds_low": fitter.blow, "bounds_high" : fitter.bup}
     return fit
 
 
