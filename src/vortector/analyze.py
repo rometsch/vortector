@@ -36,6 +36,10 @@ def calc_vortex_extent(c, area, r, phi):
         s["height"] = s["phimax"] + 2*np.pi - s["phimin"]
     else:
         s["height"] = s["phimax"] - s["phimin"]
+       
+    for key in ["pnt_xlow", "pnt_xhigh", "pnt_ylow", "pnt_yhigh"]:
+        inds = c[key]
+        c[key+"_pos"] = (r[inds], phi[inds])
 
 
 def find_vortensity_min_position(contour, r, phi, vortensity):
