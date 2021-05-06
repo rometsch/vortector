@@ -44,7 +44,6 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     contours_largest = find_contours(data, levels, verbose=verbose)
     contours_closed = extract_closed_contours(
         pad, Nx, Ny, contours_largest, max_ellipse_aspect_ratio, verbose=verbose)
-    remove_boundary_cases(contours_closed, data.shape)
     if periodic:
         remove_periodic_duplicates(contours_closed, Ny, pad)
 
