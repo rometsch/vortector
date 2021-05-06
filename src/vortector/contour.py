@@ -476,8 +476,6 @@ def create_vortex_mask(candidates, Ny, pad, periodic=False):
     for candidate in candidates:
         contour = candidate["detection"]
         mask = contour["mask_img"]
-        # fit back to original data shape
-        # mask = mask.transpose()[:, ::-1]
         mask = np.array(mask, dtype=bool)
         if periodic:
             pad_low = pad[0]
@@ -492,27 +490,14 @@ def create_vortex_mask(candidates, Ny, pad, periodic=False):
         candidate["mask"] = mask
 
         for key in ["pnt_xhigh", "pnt_xlow", "pnt_ylow", "pnt_yhigh"]:
+            x, y = contour[key + "_img"]
             if periodic:
-                pnt = contour[key + "_img"]
-                x, y = map_ext_pnt_to_orig(pnt, 2*Ny, pad_low)
-            else:
-                x, y = contour[key + "_img"]
-            y = Ny - y
+                y = (y - pad_low) % Ny
             x = int(np.round(x))
             y = int(np.round(y))
             candidate[key] = (x, y)
 
 
-def map_ext_pnt_to_orig(pnt, N, pad_low):
-    x = pnt[0]
-    y = pnt[1]
-    if y > pad_low and y <= N + pad_low:
-        y -= pad_low
-    elif y <= pad_low:
-        y += N - pad_low
-    elif y > N + pad_low:
-        y -= N + pad_low
-    return (x, y)
 
 
 def generate_ancestors(candidates, hierarchy):
