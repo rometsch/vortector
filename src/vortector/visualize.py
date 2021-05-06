@@ -150,7 +150,7 @@ def show_fit_overview_2D(vt, n=None, fig=None, bnd_lines=False, bnd_pnts=False, 
     if leg is not None:
         leg.remove()
     if len(vt.vortices) > 0:
-        ax.set_ylim(-0.5, 1)
+        ax.set_ylim(-0.5, 1.5)
         xticks = ax.get_yticks()
         vallim = ax.get_ylim()
         try:
@@ -329,6 +329,11 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
                 else:
                     plot_ellipse_periodic(
                         ax, r0, phi0, w, h, color="C2", ls="-", lw=lw)
+
+                mask = vt.get_mask(vort, region="combined")
+                ax.contour(Xc, Yc, mask, 
+                           levels=[0, 1, 2], linewidths=1, cmap="rainbow_r")   
+                
             except KeyError:
                 pass
 
