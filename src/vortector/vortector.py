@@ -43,13 +43,14 @@ class Vortector:
         if self.verbose:
             print(*args, **kwargs)
 
-    def detect(self, include_mask=False, keep_internals=False, linear_radius=False, **kwargs):
+    def detect(self, include_mask=False, keep_internals=False, linear_radius=False, autofit=True, **kwargs):
 
         if linear_radius:
-            contour_data, reverse_trafo, trafo = interpolate_to_linear(self.vortensity, self.radius)
+            contour_data, reverse_trafo, trafo = interpolate_to_linear(
+                self.vortensity, self.radius)
         else:
-            contour_data = self.vortensity    
-        
+            contour_data = self.vortensity
+
         self.candidates = detect_elliptic_contours(
             contour_data,
             self.levels,
@@ -71,9 +72,13 @@ class Vortector:
         for c in self.candidates:
             self.vortices.append({"contour": c})
 
-        self.fit_gaussians()
-        self.remove_non_vortex_candidates()
         self.remove_duplicates_by_min_vort_pos()
+
+        if autofit:
+            for n in range(len(self.vortices)):
+                self.fit(n)
+
+        self.remove_non_vortex_candidates()
 
         self.sort_vortices_by_mass()
 
@@ -134,6 +139,7 @@ class Vortector:
         Still both mirror shapes should share the same location of minimum.
         The shape containing the lower mass is deleted.
         """
+        N_before = len(self.vortices)
         to_del = []
         for v in self.vortices:
             c = v["contour"]
@@ -148,6 +154,8 @@ class Vortector:
                     to_del.append(n)
         for k, n in enumerate(set(to_del)):
             del self.vortices[n-k]
+        self.print(
+            f"Removed {N_before-len(self.vortices)} candidates by common vortensity min position.")
 
     def calculate_contour_properties(self):
         # Get the mass and vortensity inside the candidates
@@ -171,35 +179,45 @@ class Vortector:
                     "Warning: ValueError encountered in calculating vortex properties:", e)
                 pass
 
-    def fit_gaussians(self):
-        for vortex in self.vortices:
-            try:
-                fit = fit_2D_gaussian_vortensity(
-                    vortex["contour"],
-                    self.radius,
-                    self.azimuth,
-                    self.vortensity,
-                    "vortensity_min_inds",
-                    periodicity=self.periodicity)
-                vortex["fits"] = {"vortensity": fit}
-                fit = fit_2D_gaussian_surface_density(
-                    vortex["contour"],
-                    self.radius,
-                    self.azimuth,
-                    self.surface_density,
-                    "surface_density_max_inds",
-                    periodicity=self.periodicity)
-                vortex["fits"]["surface_density"] = fit
-            except (ValueError, RuntimeError) as e:
-                self.print(
-                    "Warning: ValueError encountered in calculating vortex properties:", e)
-                pass
-            try:
-                self.calc_fit_difference_2D(vortex)
-            except KeyError as e:
-                self.print(
-                    "Warning: KeyError encountered in calculating fit differences:", e)
-                pass
+    def fit(self, n):
+        vortex = self.vortices[n]
+        r, phi, vort, dens, _ = self.extract_data(vortex, region="contour")
+        r = r.ravel()
+        phi = phi.ravel()
+        vort = vort.ravel()
+        dens = dens.ravel()
+        try:
+            background_val = 1.0
+            r0, phi0 = vortex["contour"]["stats"]["vortensity_min_pos"]
+            fit = fit_2D_gaussian_vortensity(
+                vortex["contour"],
+                r, phi, vort,
+                r0, phi0, background_val,
+                periodicity=self.periodicity)
+            vortex["fits"] = {"vortensity": fit}
+        except (ValueError, RuntimeError) as e:
+            self.print(
+                "Warning: Error while fitting vortensity:", e)
+            pass
+        try:
+            background_val = 1.0
+            r0, phi0 = vortex["contour"]["stats"]["surface_density_max_pos"]
+            fit = fit_2D_gaussian_surface_density(
+                vortex["contour"],
+                r, phi, dens,
+                r0, phi0, background_val,
+                periodicity=self.periodicity)
+            vortex["fits"]["surface_density"] = fit
+        except (ValueError, RuntimeError) as e:
+            self.print(
+                "Warning: Error while fitting surface density:", e)
+            pass
+        try:
+            self.calc_fit_difference_2D(vortex)
+        except KeyError as e:
+            self.print(
+                "Warning: KeyError encountered in calculating fit differences:", e)
+            pass
 
     def calc_fit_difference_2D(self, v, varname="surface_density"):
         """ Calculate the difference of the fit to the data.

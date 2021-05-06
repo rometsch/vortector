@@ -79,22 +79,19 @@ def extract_fit_values(contour, r, phi, vals, reference_point, periodicity=None)
             if phi0 < phi_high:
                 phi0 += L
 
-    c_ref = np.average(vals[inds[0], np.logical_not(mask_phi)])
+    c_ref = np.median(vals[inds[0], np.logical_not(mask_phi)])
 
     return R, PHI, Z, r0, phi0, c_ref
 
 
-def fit_2D_gaussian_surface_density(contour, r, phi, vals, reference_point, periodicity=None):
-
-    R, PHI, Z, r0, phi0, c_ref = extract_fit_values(
-        contour, r, phi, vals, reference_point, periodicity)
+def fit_2D_gaussian_surface_density(contour, r, phi, Z, r0, phi0, c_ref, periodicity=None):
 
     c_guess = c_ref
     a_guess = np.max(Z) - c_guess
 
-    dr = np.max(R) - np.min(R)
-    dphi = np.max(PHI) - np.min(PHI)
-    fitter = Gauss2DFitter(R, PHI, Z,
+    dr = np.max(r) - np.min(r)
+    dphi = np.max(phi) - np.min(phi)
+    fitter = Gauss2DFitter(r, phi, Z,
                            p0={"x0": r0, "y0": phi0,
                                "c": 0.8*c_ref, "a": a_guess},
                            blow={"c": 0.75*c_ref, "a": 0.75*a_guess,
@@ -112,19 +109,16 @@ def fit_2D_gaussian_surface_density(contour, r, phi, vals, reference_point, peri
 
     fit = {"c": p[0], "a": p[1], "r0": p[2], "phi0": p[3],
            "sigma_r": p[4], "sigma_phi": p[5], "popt": p, "pcov": cov,
-           "bounds_low": fitter.blow, "bounds_high" : fitter.bup}
+           "bounds_low": fitter.blow, "bounds_high": fitter.bup}
     return fit
 
 
-def fit_2D_gaussian_vortensity(contour, r, phi, vals, reference_point, periodicity=None):
-
-    R, PHI, Z, r0, phi0, c_ref = extract_fit_values(
-        contour, r, phi, vals, reference_point, periodicity)
+def fit_2D_gaussian_vortensity(contour, r, phi, Z, r0, phi0, c_ref, periodicity=None):
 
     c_guess = c_ref
     a_guess = np.min(Z) - c_guess
 
-    fitter = Gauss2DFitter(R, PHI, Z,
+    fitter = Gauss2DFitter(r, phi, Z,
                            p0={"x0": r0, "y0": phi0,
                                "c": c_ref, "a": a_guess},
                            blow={"c": 0.75*c_ref, "a": 1.25*a_guess},
@@ -139,7 +133,7 @@ def fit_2D_gaussian_vortensity(contour, r, phi, vals, reference_point, periodici
 
     fit = {"c": p[0], "a": p[1], "r0": p[2], "phi0": p[3],
            "sigma_r": p[4], "sigma_phi": p[5], "popt": p, "pcov": cov,
-           "bounds_low": fitter.blow, "bounds_high" : fitter.bup}
+           "bounds_low": fitter.blow, "bounds_high": fitter.bup}
     return fit
 
 
@@ -206,7 +200,7 @@ class Gauss2DFitter:
             "sx": sx_guess,
             "sy": sy_guess
         }
-        
+
         # apply manually passed guesses
         for key, val in self.p0.items():
             p0[key] = val
@@ -242,7 +236,7 @@ class Gauss2DFitter:
 
     def fit_single(self):
         self.guess_p0()
-        
+
         x = self.x
         y = self.y
         z = self.z
