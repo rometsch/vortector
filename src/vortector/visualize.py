@@ -207,7 +207,7 @@ def show_fit_overview_2D(vt, n=None, fig=None, bnd_lines=False, bnd_pnts=False, 
 
 def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
                                 bnd_pnts=True, show_fits=True, fit_contours=True,
-                                cbar_axes=None, cmap="viridis"):
+                                cbar_axes=None, cmap="magma"):
     import matplotlib.patheffects as pe
     Xc = vt.radius
     Yc = vt.azimuth
