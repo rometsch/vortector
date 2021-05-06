@@ -309,39 +309,39 @@ class Vortector:
         else:
             raise ValueError(f"Invalide mode '{region}'")
 
-        top = bbox["pnt_xlow"]["inds"][1]
-        bottom = bbox["pnt_xhigh"]["inds"][1]
-        left = bbox["pnt_ylow"]["inds"][0]
-        right = bbox["pnt_yhigh"]["inds"][0]
+        xlow = bbox["pnt_xlow"]["inds"][0]
+        xhigh = bbox["pnt_xhigh"]["inds"][0]
+        ylow = bbox["pnt_ylow"]["inds"][1]
+        yhigh = bbox["pnt_yhigh"]["inds"][1]
+        
+        print("top", yhigh)
+        print("bottom", ylow)
+        print("left", xlow)
+        print("right", xhigh)
 
-        print("top", top)
-        print("bottom", bottom)
-        print("left", left)
-        print("right", right)
-
-        if bottom < top:
-            r = self.radius[left:right, bottom:top]
-            phi = self.azimuth[left:right, bottom:top]
-            dens = self.surface_density[left:right, bottom:top]
-            vort = self.vortensity[left:right, bottom:top]
+        if ylow < yhigh:
+            r = self.radius[xlow:xhigh, ylow:yhigh]
+            phi = self.azimuth[xlow:xhigh, ylow:yhigh]
+            dens = self.surface_density[xlow:xhigh, ylow:yhigh]
+            vort = self.vortensity[xlow:xhigh, ylow:yhigh]
             if mask is not None:
-                mask = mask[left:right, bottom:top]
+                mask = mask[xlow:xhigh, ylow:yhigh]
             else:
                 mask = np.ones(r.shape, dtype=bool)
         else:
             Ny = self.radius.shape[1]
-            r = np.pad(self.radius, [[0, 0], [0, top]], mode="wrap")[
-                left:right, bottom:Ny+top]
-            phi = np.pad(self.azimuth, [[0, 0], [0, top]], mode="wrap")[
-                left:right, bottom:Ny+top]
-            phi[phi < self.azimuth[0, bottom]] += self.periodicity["L"]
-            dens = np.pad(self.surface_density, [[0, 0], [0, top]], mode="wrap")[
-                left:right, bottom:Ny+top]
-            vort = np.pad(self.vortensity, [[0, 0], [0, top]], mode="wrap")[
-                left:right, bottom:Ny+top]
+            r = np.pad(self.radius, [[0, 0], [0, yhigh]], mode="wrap")[
+                xlow:xhigh, ylow:Ny+yhigh]
+            phi = np.pad(self.azimuth, [[0, 0], [0, yhigh]], mode="wrap")[
+                xlow:xhigh, ylow:Ny+yhigh]
+            phi[phi < self.azimuth[0, ylow]] += self.periodicity["L"]
+            dens = np.pad(self.surface_density, [[0, 0], [0, yhigh]], mode="wrap")[
+                xlow:xhigh, ylow:Ny+yhigh]
+            vort = np.pad(self.vortensity, [[0, 0], [0, yhigh]], mode="wrap")[
+                xlow:xhigh, ylow:Ny+yhigh]
             if mask is not None:
-                mask = np.pad(mask, [[0, 0], [0, top]], mode="wrap")[
-                    left:right, bottom:Ny+top]
+                mask = np.pad(mask, [[0, 0], [0, yhigh]], mode="wrap")[
+                    xlow:xhigh, ylow:Ny+yhigh]
             else:
                 mask = np.ones(r.shape, dtype=bool)
 
