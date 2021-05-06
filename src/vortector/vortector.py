@@ -62,7 +62,7 @@ class Vortector:
         if linear_radius:
             for c in self.candidates:
                 c["mask"] = interpolate_radial(c["mask"], reverse_trafo)
-                for s in ["top", "bottom", "left", "right"]:
+                for s in ["pnt_xlow", "pnt_xhigh", "pnt_ylow", "pnt_yhigh"]:
                     c[s] = transform_indices(c[s], trafo)
 
         self.calculate_contour_properties()
@@ -291,10 +291,15 @@ class Vortector:
         else:
             raise ValueError(f"Invalide mode '{region}'")
 
-        top = bbox["top"]["inds"][1]
-        bottom = bbox["bottom"]["inds"][1]
-        left = bbox["left"]["inds"][0]
-        right = bbox["right"]["inds"][0]
+        top = bbox["pnt_xlow"]["inds"][1]
+        bottom = bbox["pnt_xhigh"]["inds"][1]
+        left = bbox["pnt_ylow"]["inds"][0]
+        right = bbox["pnt_yhigh"]["inds"][0]
+
+        print("top", top)
+        print("bottom", bottom)
+        print("left", left)
+        print("right", right)
 
         if bottom < top:
             r = self.radius[left:right, bottom:top]
@@ -327,21 +332,21 @@ class Vortector:
     def merge_bounding_boxes(self, bb1, bb2):
         bbox = {}
         # left
-        if bb1["left"]["inds"][0] < bb2["left"]["inds"][0]:
-            bbox["left"] = dict(bb1["left"])
+        if bb1["pnt_ylow"]["inds"][0] < bb2["pnt_ylow"]["inds"][0]:
+            bbox["pnt_ylow"] = dict(bb1["pnt_ylow"])
         else:
-            bbox["left"] = dict(bb2["left"])
+            bbox["pnt_ylow"] = dict(bb2["pnt_ylow"])
         # right
-        if bb1["right"]["inds"][0] > bb2["right"]["inds"][0]:
-            bbox["right"] = dict(bb1["right"])
+        if bb1["pnt_yhigh"]["inds"][0] > bb2["pnt_yhigh"]["inds"][0]:
+            bbox["pnt_yhigh"] = dict(bb1["pnt_yhigh"])
         else:
-            bbox["right"] = dict(bb2["right"])
+            bbox["pnt_yhigh"] = dict(bb2["pnt_yhigh"])
 
         N = self.radius.shape[1]
-        t1 = bb1["top"]["inds"][1]
-        b1 = bb1["bottom"]["inds"][1]
-        t2 = bb2["top"]["inds"][1]
-        b2 = bb2["bottom"]["inds"][1]
+        t1 = bb1["pnt_xlow"]["inds"][1]
+        b1 = bb1["pnt_xhigh"]["inds"][1]
+        t2 = bb2["pnt_xlow"]["inds"][1]
+        b2 = bb2["pnt_xhigh"]["inds"][1]
 
         # consider periodicity
         if b1 > t1:
@@ -350,14 +355,14 @@ class Vortector:
             t2 += N
 
         if t1 > t2:
-            bbox["top"] = dict(bb1["top"])
+            bbox["pnt_xlow"] = dict(bb1["pnt_xlow"])
         else:
-            bbox["top"] = dict(bb2["top"])
+            bbox["pnt_xlow"] = dict(bb2["pnt_xlow"])
 
         if b1 < b2:
-            bbox["bottom"] = dict(bb1["bottom"])
+            bbox["pnt_xhigh"] = dict(bb1["pnt_xhigh"])
         else:
-            bbox["bottom"] = dict(bb2["bottom"])
+            bbox["pnt_xhigh"] = dict(bb2["pnt_xhigh"])
 
         return bbox
 
@@ -370,10 +375,10 @@ class Vortector:
             Vortex as returned by the Vortector.
         """
         box = {
-            "top": {"inds": vortex["contour"]["top"]},
-            "bottom": {"inds": vortex["contour"]["bottom"]},
-            "left": {"inds": vortex["contour"]["left"]},
-            "right": {"inds": vortex["contour"]["right"]},
+            "pnt_xlow": {"inds": vortex["contour"]["pnt_xlow"]},
+            "pnt_xhigh": {"inds": vortex["contour"]["pnt_xhigh"]},
+            "pnt_ylow": {"inds": vortex["contour"]["pnt_ylow"]},
+            "pnt_yhigh": {"inds": vortex["contour"]["pnt_yhigh"]},
         }
 
         rs = self.radius[:, 0]
@@ -406,10 +411,10 @@ class Vortector:
         phi_low = ((phi0 - hphi) - bnd_low) % L + bnd_low
 
         box = {
-            "top": {"pos": [r0, phi_up]},
-            "bottom": {"pos": [r0, phi_low]},
-            "left": {"pos": [r_low, phi0]},
-            "right": {"pos": [r_up, phi0]}
+            "pnt_xlow": {"pos": [r0, phi_up]},
+            "pnt_xhigh": {"pos": [r0, phi_low]},
+            "pnt_ylow": {"pos": [r_low, phi0]},
+            "pnt_yhigh": {"pos": [r_up, phi0]}
         }
 
         rs = self.radius[:, 0]
