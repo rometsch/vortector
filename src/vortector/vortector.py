@@ -18,7 +18,7 @@ class Vortector:
         self.radius = radius
         self.radius_min = np.min(radius)
         self.radius_max = np.max(radius)
-        
+
         self.azimuth = azimuth
         self.area = area
 
@@ -75,7 +75,15 @@ class Vortector:
         for c in self.candidates:
             self.vortices.append({"contour": c})
 
-        self.remove_duplicates_by_min_vort_pos()
+        self.remove_duplicates_by_boundary_area()
+        self.sort_vortices_by_mass()
+        self.create_hierarchy_by_min_vort_pos()
+
+        # select only the parents
+        self.candidates = {v["contour"]["detection"]
+                           ["uuid"]: v for v in self.vortices}
+        self.vortices = [c for c in self.vortices if len(
+            c["hierarchy"]["parents"]) == 0]
 
         if autofit:
             for n in range(len(self.vortices)):
@@ -83,8 +91,8 @@ class Vortector:
 
         self.remove_non_vortex_candidates()
 
-        self.sort_vortices_by_mass()
-
+        if not keep_internals:
+            del self.candidates
         self.remove_intermediate_data(include_mask, keep_internals)
 
         return self.vortices
@@ -111,8 +119,7 @@ class Vortector:
         Exclude vortices for which the minimum vorticity is not at least 0.05 lower than the maximum vorticity.
         Also check that vortensity < 1
         """
-
-        no_min = []
+        to_del = []
         for n, vortex in enumerate(self.vortices):
             c = vortex["contour"]
             cid = c["detection"]["opencv_contour_number"]
@@ -120,45 +127,126 @@ class Vortector:
                 if c["stats"]["vortensity_min"] > 1:
                     self.print(
                         f"Check candidates: excluding {cid} because of min_vortensity > 1")
-                    no_min.append(n)
+                    to_del.append(n)
                     continue
                 vortensity_drop = c["stats"]["vortensity_max"] - \
                     c["stats"]["vortensity_min"]
                 if vortensity_drop < self.mvd:
-                    self.print(
-                        f"Check candidates: excluding {cid} vortensity drop is {vortensity_drop} < {self.mvd}")
-                    no_min.append(n)
+                    to_del.append(n)
             except KeyError:
                 # remove candiates causing errors
-                no_min.append(n)
-        for k, n in enumerate(no_min):
-            del self.vortices[n-k]
+                to_del.append(n)
+        to_del = set(to_del)
+        self.vortices = [v for n, v in enumerate(
+            self.vortices) if not n in to_del]
+
+        self.print(
+            f"Removed {len(to_del)} candidates by due to vortensity drop < {self.mvd}.")
 
     def remove_duplicates_by_min_vort_pos(self):
-        """ Remove remaining duplicates.
+        """ Remove remaining duplicates. 
 
         Because of the way the mirror counter lines are generated,
         the mirror shape can be shifted slightly.
         Still both mirror shapes should share the same location of minimum.
         The shape containing the lower mass is deleted.
         """
-        N_before = len(self.vortices)
         to_del = []
-        for v in self.vortices:
+        for n_vort, v in enumerate(self.vortices):
+            if n_vort in to_del:
+                continue
             c = v["contour"]
             inds = c["stats"]["vortensity_min_inds"]
-            mass = c["stats"]["mass"]
+            area = int(c["detection"]["pixel_area"])
 
-            for n, o in enumerate(self.vortices):
+            for n_other, o in enumerate(self.vortices):
+                if n_other == n_vort:
+                    continue
                 oc = o["contour"]
                 o_inds = oc["stats"]["vortensity_min_inds"]
-                o_mass = oc["stats"]["mass"]
-                if o_inds == inds and o_mass < mass:
-                    to_del.append(n)
-        for k, n in enumerate(set(to_del)):
-            del self.vortices[n-k]
+                o_area = oc["detection"]["pixel_area"]
+                if o_inds == inds and o_area == area:
+                    to_del.append(n_other)
+        to_del = set(to_del)
+        self.vortices = [v for n, v in enumerate(
+            self.vortices) if not n in to_del]
         self.print(
-            f"Removed {N_before-len(self.vortices)} candidates by common vortensity min position.")
+            f"Removed {len(to_del)} candidates by common vortensity min position. {len(self.vortices)} remaining")
+
+    def remove_duplicates_by_boundary_area(self):
+        """ Remove remaining duplicates. 
+
+        Hash the array of boundary points and look for matches.
+        Remove the contour with the lower contour value.
+        """
+        to_del = []
+
+        for n_vort, v in enumerate(self.vortices):
+            if n_vort in to_del:
+                continue
+            c = v["contour"]
+            v_area = c["detection"]["pixel_area"]
+
+            for n_other, o in enumerate(self.vortices):
+                if n_other == n_vort:
+                    continue
+                oc = o["contour"]
+                o_area = oc["detection"]["pixel_area"]
+
+                if v_area == o_area:
+                    to_del.append(n_other)
+
+        to_del = set(to_del)
+        self.vortices = [v for n, v in enumerate(
+            self.vortices) if not n in to_del]
+
+        self.print(
+            f"Removed {len(to_del)} candidates by common boundary area. {len(self.vortices)} remaining")
+
+    def create_hierarchy_by_min_vort_pos(self):
+        """ Create a hierarchy of the vortex candidates.
+
+        For every candidate we look at all other candidates 
+        and check whether they have the same position of the vortex minimum.
+        Then we create a hierarchy by appending the smaller one to the larger one as child
+        and the larger one to the smaller one as a parent.
+        """
+        for vort in self.vortices:
+            vort["hierarchy"] = {"parents": [], "children": []}
+        for n_vort, v in enumerate(self.vortices):
+            c = v["contour"]
+            inds = c["stats"]["vortensity_min_inds"]
+            vortmin = c["stats"]["vortensity_min"]
+            mass = c["stats"]["mass"]
+            v_area = c["detection"]["pixel_area"]
+            contour_val = c["detection"]["contour_value"]
+
+            vort_info = (contour_val, mass, v_area, inds,
+                         vortmin, c["detection"]["uuid"])
+
+            for n_other, o in enumerate(self.vortices):
+                if n_vort == n_other:
+                    continue
+                oc = o["contour"]
+                o_inds = oc["stats"]["vortensity_min_inds"]
+                o_vortmin = oc["stats"]["vortensity_min"]
+                o_mass = oc["stats"]["mass"]
+                o_area = oc["detection"]["pixel_area"]
+                o_contour_val = oc["detection"]["contour_value"]
+
+                o_info = (o_contour_val, o_mass, o_area, o_inds,
+                          o_vortmin, oc["detection"]["uuid"])
+
+                if o_inds == inds:
+                    if (o_contour_val < contour_val) and (o_mass < mass):
+                        v["hierarchy"]["children"].append(o_info)
+                    else:
+                        v["hierarchy"]["parents"].append(o_info)
+
+        for vort in self.vortices:
+            h = vort["hierarchy"]
+            h["parents"] = sorted(set(h["parents"]), key=lambda x: -x[0])
+            h["children"] = sorted(set(h["children"]), key=lambda x: -x[0])
 
     def calculate_contour_properties(self):
         # Get the mass and vortensity inside the candidates
