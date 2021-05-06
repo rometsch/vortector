@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from numpy.random import default_rng
 
@@ -11,7 +12,7 @@ except ImportError:
 class VortexGenerator:
 
     def __init__(self, Nvortices, Nr=121, Nphi=251, rmin=1, rmax=20, phimin=-np.pi, phimax=np.pi, c_dens=1,
-                 a_dens=3, a_vort=-1.5, noise=0.1, seed=0, periodic_x=False, periodic_y=False):
+                 a_dens=3, a_vort=-1.5, noise=0.05, seed=None, periodic_x=False, periodic_y=False):
         self.Nr = Nr
         self.Nphi = Nphi
         self.rmin = rmin
@@ -26,6 +27,8 @@ class VortexGenerator:
         self.a_vort = a_vort
 
         self.noise = noise
+        if seed is None:
+            seed = int.from_bytes(os.urandom(16), 'big')
         self.seed = seed
 
         self.periodic_x = periodic_x
@@ -36,7 +39,7 @@ class VortexGenerator:
         self.vortex_params = []
 
         for n in range(Nvortices):
-            self.add_vortex()
+            self.add_vortex(seed=seed+n)
 
         self.calc_data()
 
@@ -99,6 +102,7 @@ class VortexGenerator:
         if seed is None:
             seed = 0
 
+        print("r0", r0)
         self.vortex_params.append(
             [r0, sigma_r, phi0, sigma_phi, a_vort, a_dens]
         )
@@ -137,15 +141,18 @@ class VortexGenerator:
 
 
 if OpenSimplex is not None:
-    def simplex_noise(Nx, Ny, seed=0, feature_size=None):
+    def simplex_noise(Nx, Ny, seed=1234, order=3, feature_size=None):
         if feature_size is None:
             feature_size = max(Nx, Ny)/13
         ng = OpenSimplex(seed)
         noise = np.zeros((Nx, Ny))
-        for nx in range(Nx):
-            for ny in range(Ny):
-                noise[nx, ny] = ng.noise3d(nx/feature_size, ny/feature_size, 0)
-        return noise
+        for norder in range(1, order+1):
+            feature_size /= 2
+            for nx in range(Nx):
+                for ny in range(Ny):
+                    noise[nx, ny] = (1/2**norder) * \
+                        ng.noise2d(nx/feature_size, ny/feature_size)
+            return noise
 else:
-    def simplex_noise(Nx, Ny, seed=0, feature_size=None):
+    def simplex_noise(Nx, Ny, seed=0, order=3, feature_size=None):
         return np.zeros((Nx, Ny))
