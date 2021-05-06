@@ -175,7 +175,6 @@ class Gauss2DFitter:
             self.set_upper_bound(key, val)
 
         self.p0 = p0
-        self.guess_p0()
 
     def set_lower_bound(self, key, value):
         if not key in self.parameters:
@@ -207,8 +206,17 @@ class Gauss2DFitter:
             "sx": sx_guess,
             "sy": sy_guess
         }
+        
+        # apply manually passed guesses
         for key, val in self.p0.items():
             p0[key] = val
+
+        # restrict guess to allowed range of values
+        for key, val in p0.items():
+            val = min(val, self.bup[key])
+            val = max(val, self.blow[key])
+            p0[key] = val
+
         self.p0 = p0
 
     def fit(self):
@@ -233,6 +241,8 @@ class Gauss2DFitter:
             np.exp(-(dx/sx)**2 - (dy/sy)**2)
 
     def fit_single(self):
+        self.guess_p0()
+        
         x = self.x
         y = self.y
         z = self.z
