@@ -28,10 +28,10 @@ def calc_vortex_extent(c, area, r, phi):
     mask = c["mask"]
     s = c["stats"]
     s["area"] = np.sum(area[mask])
-    s["rmax"] = r[c["left"]]
-    s["rmin"] = r[c["right"]]
-    s["phimin"] = phi[c["top"]]
-    s["phimax"] = phi[c["bottom"]]
+    s["rmax"] = r[c["pnt_xlow"]]
+    s["rmin"] = r[c["pnt_xhigh"]]
+    s["phimin"] = phi[c["pnt_ylow"]]
+    s["phimax"] = phi[c["pnt_yhigh"]]
     if s["phimax"] < s["phimin"]:
         s["height"] = s["phimax"] + 2*np.pi - s["phimin"]
     else:

@@ -201,13 +201,13 @@ def show_fit_overview_2D(vt, n=None, fig=None, bnd_lines=False, bnd_pnts=False, 
     if xscale is not None:
         axes[1, 0].set_xscale(xscale)
 
-    for ax in [axes[1, 0], axes[1, 3]]:
-        ax.set_yticklabels(yticklabels)
+    # for ax in [axes[1, 0], axes[1, 3]]:
+    #     ax.set_yticklabels(yticklabels)
 
 
 def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
                                 bnd_pnts=True, show_fits=True, fit_contours=True,
-                                cbar_axes=None):
+                                cbar_axes=None, cmap="viridis"):
     import matplotlib.patheffects as pe
     Xc = vt.radius
     Yc = vt.azimuth
@@ -220,19 +220,17 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
         levels = vt.levels
 
         Z = vt.vortensity
-        cmap = "magma"
         norm = matplotlib.colors.Normalize(vmin=levels[0], vmax=levels[-1])
         img = ax.pcolormesh(
             Xc, Yc, Z, cmap=cmap, norm=norm, rasterized=True, shading="auto")
 
         ax.contour(
-            Xc, Yc, Z, levels=levels[::2], colors=contour_colors, linewidths=contour_lw)
+            Xc, Yc, Z, levels=levels, colors=contour_colors, linewidths=contour_lw)
 
     elif varname == "surface_density":
         label = r"$\Sigma$"
 
         Z = vt.surface_density
-        cmap = "magma"
 
         # try:
         #     vmax = vt.vortices[0]["fits"]["surface_density"]["c"] + \
@@ -241,9 +239,12 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
         #     vmax = np.max(Z)
 
         vmax = np.max(Z)
-        vmin = 1e-3*vmax
+        vmin = max(1e-3*vmax, np.min(Z))
 
-        norm = matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax)
+        if vmax > 100*vmin:
+            norm = matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax)
+        else:
+            norm = matplotlib.colors.Normalize(vmin=0, vmax=vmax)
         img = ax.pcolormesh(
             Xc, Yc, Z, cmap=cmap, norm=norm, rasterized=True, shading="auto")
 
@@ -257,7 +258,7 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
     if n is None:
         if main_vortex is not None:
             vortices = [main_vortex] + \
-                [v for v in vt.vortices if v != main_vortex]
+                [v for v in vt.vortices if v["contour"]["detection"]["uuid"] != main_vortex["contour"]["detection"]["uuid"]]
         else:
             vortices = []
     else:
