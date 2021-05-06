@@ -71,12 +71,12 @@ def extract_fit_values(contour, r, phi, vals, reference_point, periodicity=None)
         up = periodicity["upper"]
         L = periodicity["L"]
         # capture contours streching over the periodic boundary
-        phi_top = phi[contour["top"]]
-        phi_bottom = phi[contour["bottom"]]
-        if phi_top < phi_bottom:
+        phi_low = phi[contour["pnt_ylow"]]
+        phi_high = phi[contour["pnt_yhigh"]]
+        if phi_high < phi_low:
             # always place the contour at the higher boundary
-            PHI[PHI <= phi_top] += 2*np.pi
-            if phi0 < phi_top:
+            PHI[PHI <= phi_high] += 2*np.pi
+            if phi0 < phi_high:
                 phi0 += L
 
     c_ref = np.average(vals[inds[0], np.logical_not(mask_phi)])
