@@ -16,6 +16,9 @@ class Vortector:
         self.surface_density = surface_density
 
         self.radius = radius
+        self.radius_min = np.min(radius)
+        self.radius_max = np.max(radius)
+        
         self.azimuth = azimuth
         self.area = area
 
@@ -179,22 +182,26 @@ class Vortector:
                     "Warning: ValueError encountered in calculating vortex properties:", e)
                 pass
 
-    def fit(self, n):
+    def fit(self, n, region="contour"):
         vortex = self.vortices[n]
-        r, phi, vort, dens, _ = self.extract_data(vortex, region="contour")
+        mask_full = self.get_mask(vortex, region=region)
+        r, phi, vort, dens, mask = self.extract_data(vortex, region=region)
         r = r.ravel()
         phi = phi.ravel()
         vort = vort.ravel()
         dens = dens.ravel()
         try:
-            background_val = 1.0
             r0, phi0 = vortex["contour"]["stats"]["vortensity_min_pos"]
+            r0_ind = vortex["contour"]["stats"]["vortensity_min_inds"][0]
+            oazi = self.vortensity[r0_ind, ~mask_full[r0_ind]]
+            background_val = np.sort(oazi)[-len(oazi)//4]
             fit = fit_2D_gaussian_vortensity(
                 vortex["contour"],
                 r, phi, vort,
                 r0, phi0, background_val,
                 periodicity=self.periodicity)
             vortex["fits"] = {"vortensity": fit}
+            vortex["fits"]["vortensity"]["fit_region"] = region
         except (ValueError, RuntimeError) as e:
             self.print(
                 "Warning: Error while fitting vortensity:", e)
@@ -202,12 +209,16 @@ class Vortector:
         try:
             background_val = 1.0
             r0, phi0 = vortex["contour"]["stats"]["surface_density_max_pos"]
+            r0_ind = vortex["contour"]["stats"]["surface_density_max_inds"][0]
+            oazi = self.surface_density[r0_ind, ~mask_full[r0_ind]]
+            background_val = np.sort(oazi)[len(oazi)//4]
             fit = fit_2D_gaussian_surface_density(
                 vortex["contour"],
                 r, phi, dens,
                 r0, phi0, background_val,
                 periodicity=self.periodicity)
             vortex["fits"]["surface_density"] = fit
+            vortex["fits"]["surface_density"]["fit_region"] = region
         except (ValueError, RuntimeError) as e:
             self.print(
                 "Warning: Error while fitting surface density:", e)
@@ -292,32 +303,13 @@ class Vortector:
             If region=="combined":
                 Use the combination of all of the above regions.
         """
-        if region == "contour":
-            bbox = self.contour_bounding_box(vortex)
-            mask = vortex["contour"]["mask"]
-        elif region in ["vortensity", "surface_density"]:
-            bbox = self.ellipse_bounding_box(vortex["fits"][region])
-            mask = self.ellipse_mask(vortex["fits"][region])
-        elif region == "combined":
-            bbox1 = self.contour_bounding_box(vortex)
-            bbox2 = self.ellipse_bounding_box(vortex["fits"]["vortensity"])
-            bbox3 = self.ellipse_bounding_box(
-                vortex["fits"]["surface_density"])
-            bbox = self.merge_bounding_boxes(bbox1, bbox2)
-            bbox = self.merge_bounding_boxes(bbox, bbox3)
-            mask = self.combined_mask(vortex)
-        else:
-            raise ValueError(f"Invalide mode '{region}'")
+        mask = self.get_mask(vortex, region=region)
+        bbox = self.get_bbox(vortex, region=region)
 
-        xlow = bbox["pnt_xlow"]["inds"][0]
-        xhigh = bbox["pnt_xhigh"]["inds"][0]
-        ylow = bbox["pnt_ylow"]["inds"][1]
-        yhigh = bbox["pnt_yhigh"]["inds"][1]
-        
-        print("top", yhigh)
-        print("bottom", ylow)
-        print("left", xlow)
-        print("right", xhigh)
+        xlow = bbox["xlow"]["inds"][0]
+        xhigh = bbox["xhigh"]["inds"][0]
+        ylow = bbox["ylow"]["inds"][1]
+        yhigh = bbox["yhigh"]["inds"][1]
 
         if ylow < yhigh:
             r = self.radius[xlow:xhigh, ylow:yhigh]
@@ -350,21 +342,21 @@ class Vortector:
     def merge_bounding_boxes(self, bb1, bb2):
         bbox = {}
         # left
-        if bb1["pnt_ylow"]["inds"][0] < bb2["pnt_ylow"]["inds"][0]:
-            bbox["pnt_ylow"] = dict(bb1["pnt_ylow"])
+        if bb1["ylow"]["inds"][0] < bb2["ylow"]["inds"][0]:
+            bbox["ylow"] = dict(bb1["ylow"])
         else:
-            bbox["pnt_ylow"] = dict(bb2["pnt_ylow"])
+            bbox["ylow"] = dict(bb2["ylow"])
         # right
-        if bb1["pnt_yhigh"]["inds"][0] > bb2["pnt_yhigh"]["inds"][0]:
-            bbox["pnt_yhigh"] = dict(bb1["pnt_yhigh"])
+        if bb1["yhigh"]["inds"][0] > bb2["yhigh"]["inds"][0]:
+            bbox["yhigh"] = dict(bb1["yhigh"])
         else:
-            bbox["pnt_yhigh"] = dict(bb2["pnt_yhigh"])
+            bbox["yhigh"] = dict(bb2["yhigh"])
 
         N = self.radius.shape[1]
-        t1 = bb1["pnt_xlow"]["inds"][1]
-        b1 = bb1["pnt_xhigh"]["inds"][1]
-        t2 = bb2["pnt_xlow"]["inds"][1]
-        b2 = bb2["pnt_xhigh"]["inds"][1]
+        t1 = bb1["xlow"]["inds"][1]
+        b1 = bb1["xhigh"]["inds"][1]
+        t2 = bb2["xlow"]["inds"][1]
+        b2 = bb2["xhigh"]["inds"][1]
 
         # consider periodicity
         if b1 > t1:
@@ -373,14 +365,14 @@ class Vortector:
             t2 += N
 
         if t1 > t2:
-            bbox["pnt_xlow"] = dict(bb1["pnt_xlow"])
+            bbox["xlow"] = dict(bb1["xlow"])
         else:
-            bbox["pnt_xlow"] = dict(bb2["pnt_xlow"])
+            bbox["xlow"] = dict(bb2["xlow"])
 
         if b1 < b2:
-            bbox["pnt_xhigh"] = dict(bb1["pnt_xhigh"])
+            bbox["xhigh"] = dict(bb1["xhigh"])
         else:
-            bbox["pnt_xhigh"] = dict(bb2["pnt_xhigh"])
+            bbox["xhigh"] = dict(bb2["xhigh"])
 
         return bbox
 
@@ -393,10 +385,10 @@ class Vortector:
             Vortex as returned by the Vortector.
         """
         box = {
-            "pnt_xlow": {"inds": vortex["contour"]["pnt_xlow"]},
-            "pnt_xhigh": {"inds": vortex["contour"]["pnt_xhigh"]},
-            "pnt_ylow": {"inds": vortex["contour"]["pnt_ylow"]},
-            "pnt_yhigh": {"inds": vortex["contour"]["pnt_yhigh"]},
+            "xlow": {"inds": vortex["contour"]["pnt_xlow"]},
+            "xhigh": {"inds": vortex["contour"]["pnt_xhigh"]},
+            "ylow": {"inds": vortex["contour"]["pnt_ylow"]},
+            "yhigh": {"inds": vortex["contour"]["pnt_yhigh"]},
         }
 
         rs = self.radius[:, 0]
@@ -420,8 +412,8 @@ class Vortector:
         phi0 = fit["phi0"]
         hphi = np.sqrt(2*np.log(2))*fit["sigma_phi"]
 
-        r_up = r0 + hr
-        r_low = r0 - hr
+        r_up = min(r0 + hr, self.radius_max)
+        r_low = max(r0 - hr, self.radius_min)
 
         bnd_low = self.periodicity["lower"]
         L = self.periodicity["L"]
@@ -429,10 +421,10 @@ class Vortector:
         phi_low = ((phi0 - hphi) - bnd_low) % L + bnd_low
 
         box = {
-            "pnt_xlow": {"pos": [r0, phi_up]},
-            "pnt_xhigh": {"pos": [r0, phi_low]},
-            "pnt_ylow": {"pos": [r_low, phi0]},
-            "pnt_yhigh": {"pos": [r_up, phi0]}
+            "xlow": {"pos": [r_low, phi0]},
+            "xhigh": {"pos": [r_up, phi0]},
+            "ylow": {"pos": [r0, phi_low]},
+            "yhigh": {"pos": [r0, phi_up]}
         }
 
         rs = self.radius[:, 0]
@@ -497,6 +489,87 @@ class Vortector:
 
         mask_ellipses = np.logical_or(mask_vort, mask_dens)
         mask = np.logical_or(mask_contour, mask_ellipses)
+
+        return mask
+
+    def get_bbox(self, vortex, region="contour"):
+        """A boundary box for the vortex region.
+
+        Parameters
+        ----------
+        vortex : dict
+            Vortex dictionary as returned by Vortector.
+        region : str, optional
+            Select the region to be used, by default "contour".
+            If region=="contour":
+                Use the contour as region.
+            If region=="vortensity":
+                Use the vortensity fit FWHM ellipse as region.
+            If region=="surface_density":
+                Use the surface density fit FWHM ellipse as region.
+            If region=="combined":
+                Use the combination of all of the above regions.
+        """
+        if region == "contour":
+            bbox = self.contour_bounding_box(vortex)
+        elif region in ["vortensity", "surface_density"]:
+            bbox = self.ellipse_bounding_box(vortex["fits"][region])
+        elif region == "combined":
+            bbox = self.contour_bounding_box(vortex)
+            try:
+                bbox2 = self.ellipse_bounding_box(vortex["fits"]["vortensity"])
+                bbox = self.merge_bounding_boxes(bbox, bbox2)
+            except KeyError:
+                pass
+
+            try:
+                bbox3 = self.ellipse_bounding_box(
+                    vortex["fits"]["surface_density"])
+                bbox = self.merge_bounding_boxes(bbox, bbox3)
+            except KeyError:
+                pass
+        else:
+            raise ValueError(f"Invalid region '{region}'")
+
+        return bbox
+
+    def get_mask(self, vortex, region="contour"):
+        """A 2d array indicating the vortex.
+
+        Parameters
+        ----------
+        vortex : dict
+            Vortex dictionary as returned by Vortector.
+        region : str, optional
+            Select the region to be used, by default "contour".
+            If region=="contour":
+                Use the contour as region.
+            If region=="vortensity":
+                Use the vortensity fit FWHM ellipse as region.
+            If region=="surface_density":
+                Use the surface density fit FWHM ellipse as region.
+            If region=="combined":
+                Use the combination of all of the above regions.
+        """
+        if region == "contour":
+            mask = vortex["contour"]["mask"]
+        elif region in ["vortensity", "surface_density"]:
+            mask = self.ellipse_mask(vortex["fits"][region])
+        elif region == "combined":
+            mask = self.get_mask(vortex, region="contour")
+            try:
+                mask2 = self.get_mask(vortex, region="vortensity")
+                mask = np.logical_or(mask, mask2)
+            except KeyError:
+                pass
+
+            try:
+                mask3 = self.get_mask(vortex, region="surface_density")
+                mask = np.logical_or(mask, mask3)
+            except KeyError:
+                pass
+        else:
+            raise ValueError(f"Invalid region '{region}'")
 
         return mask
 
