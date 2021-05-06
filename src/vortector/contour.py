@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from uuid import uuid4 as generate_uuid
 
 
-def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse_deviation, min_image_size=1000, periodic=True, blur=None, verbose=False):
+def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse_deviation, periodic=True, blur=None, verbose=False):
     """ Detect closed equivalue lines in a 2D contour plot of the data.
 
     1. create a contour line image of the data
@@ -33,8 +33,6 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     dict
         Dictionary of the candidate contours with information stored in dictionaries. 
     """
-    min_img_size = min_image_size  # config value
-
     if blur is not None:
         data = gaussian_blur(data, blur)
 
@@ -207,7 +205,7 @@ def find_contours(data, levels, verbose=False):
         for k, bnd in enumerate(rv):
             d = {
                 "boundary": bnd,
-                "value": th,
+                "contour_value": th,
                 "opencv_contour_number": 1000*n + k,
                 "uuid": f"{generate_uuid()}"}
             contours.append(d)
