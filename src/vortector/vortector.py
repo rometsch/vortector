@@ -62,6 +62,7 @@ class Vortector:
             verbose=self.verbose,
             periodic=True,
             **kwargs)
+        self.print(f"Detected {len(self.candidates)} elliptic contours.")
 
         if linear_radius:
             for c in self.candidates:
