@@ -2,6 +2,8 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 
+from numba import njit
+
 from uuid import uuid4 as generate_uuid
 
 
@@ -46,6 +48,7 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
     remove_duplicates_by_geometry(contours_closed, verbose=verbose)
 
     deviation_method = "semianalytic"  # configvalue
+
     contours = extract_ellipse_contours(
         data.shape, contours_closed, max_ellipse_deviation,
         deviation_method=deviation_method)
@@ -303,8 +306,8 @@ def extract_closed_contours(pad, Nx, Ny, contours_largest, max_ellipse_aspect_ra
             x, y = contour[key + "_img"]
             if periodic:
                 y = (y - pad[0]) % Ny
-            x = int(np.round(x))
-            y = int(np.round(y))
+            x = round(x)
+            y = round(y)
             contour[key] = (x, y)
 
         bbox_inds = np.array([contour[key] for key in
@@ -379,6 +382,7 @@ def extract_ellipse_contours(img_shape, contours_closed, max_ellipse_deviation, 
     return candidates
 
 
+@njit
 def ellipse_pnt(x, y, ellipse):
     angle = ellipse[2]/180*np.pi
     cx = ellipse[0][0]
@@ -402,28 +406,29 @@ def ellipse_pnt(x, y, ellipse):
     return px, py
 
 
-def tetragon_area(p1, p2, p3, p4):
-    return triangle_area(p1, p2, p3) + triangle_area(p1, p3, p4)
-
-
-def triangle_area(p1, p2, p3):
+@njit()
+def triangle_area(x1, y1, x2, y2, x3, y3):
     signed_area = (
-        +p3[0] * (p1[1] - p2[1])
-        + p1[0] * (p2[1] - p3[1])
-        + p2[0] * (p3[1] - p1[1])
+        x3 * (y1 - y2)
+        + x1 * (y2 - y3)
+        + x2 * (y3 - y1)
     ) / 2
     return np.abs(signed_area)
 
 
-def calc_diff_area(bx, by, ellipse):
-    px, py = ellipse_pnt(bx, by, ellipse)
-    area = 0
+@njit()
+def tetragon_area(x1, y1, x2, y2, x3, y3, x4, y4):
+    return triangle_area(x1, y1, x2, y2, x3, y3) + triangle_area(x1, y1, x3, y3, x4, y4)
+
+
+@njit()
+def calc_diff_area(bx, by, px, py):
+    area = 0.0
     for n in range(len(px)-1):
-        p1 = [px[n], py[n]]
-        p4 = [px[n+1], py[n+1]]
-        p2 = [bx[n], by[n]]
-        p3 = [bx[n+1], by[n+1]]
-        area += tetragon_area(p1, p2, p3, p4)
+        area += tetragon_area(px[n], py[n],
+                              bx[n], by[n],
+                              bx[n+1], by[n+1],
+                              px[n+1], py[n+1])
     return area
 
 
@@ -434,7 +439,11 @@ def ellipse_deviation_semianalytic(boundary_pnts, ellipse, area):
         Nstride = int(np.ceil(len(bx)/100))
     else:
         Nstride = 1
-    area_diff = calc_diff_area(bx[::Nstride], by[::Nstride], ellipse)
+
+    px, py = ellipse_pnt(bx[::Nstride], by[::Nstride], ellipse)
+    area_diff = calc_diff_area(bx[::Nstride].astype(
+        np.float64), by[::Nstride].astype(np.float64), px, py)
+
     return area_diff/area, area_diff
 
 
