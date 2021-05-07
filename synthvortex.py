@@ -3,13 +3,15 @@ import numpy as np
 from numpy.random import default_rng
 import pickle
 import types
+from numba import njit
 
-try:
-    from opensimplex import OpenSimplex
-except ImportError:
-    print("'opensimplex' package not found. Disable noise. Run 'python3 -m pip install opensimplex'")
-    OpenSimplex = None
+from opensimplex2d import simplexnoise
 
+def simplex_noise(Nx, Ny, seed=1234, order=3, feature_size=None):
+    if feature_size is None:
+        feature_size = max(Nx, Ny)/13
+    noise = simplexnoise(Nx, Ny, feature_size, seed=seed)
+    return noise
 
 class VortexGenerator:
 
@@ -162,21 +164,3 @@ class VortexGenerator:
             data = pickle.load(infile)
         for key in data:
             setattr(self, key, data[key])
-
-
-if OpenSimplex is not None:
-    def simplex_noise(Nx, Ny, seed=1234, order=3, feature_size=None):
-        if feature_size is None:
-            feature_size = max(Nx, Ny)/13
-        ng = OpenSimplex(seed)
-        noise = np.zeros((Nx, Ny))
-        for norder in range(1, order+1):
-            feature_size /= 2
-            for nx in range(Nx):
-                for ny in range(Ny):
-                    noise[nx, ny] = (1/2**norder) * \
-                        ng.noise2d(nx/feature_size, ny/feature_size)
-            return noise
-else:
-    def simplex_noise(Nx, Ny, seed=0, order=3, feature_size=None):
-        return np.zeros((Nx, Ny))
