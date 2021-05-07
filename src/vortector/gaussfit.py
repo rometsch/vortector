@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize import curve_fit
+from numba import njit
 
 
 def gauss(x, c, a, x0, sigma):
@@ -25,6 +26,7 @@ def gauss(x, c, a, x0, sigma):
     return a * np.exp(-(x - x0)**2 / (2 * sigma**2)) + c
 
 
+@njit
 def gauss2D(v, c, a, x0, y0, sx, sy):
     """ A 2D version of the gaussian bell function.
 
@@ -54,6 +56,8 @@ def gauss2D(v, c, a, x0, y0, sx, sy):
     argy = -(y - y0)**2 / (2 * sy**2)
     return c + a*np.exp(argx+argy)
 
+
+@njit
 def gauss2D_jac(v, c, a, x0, y0, sx, sy):
     """ Jacobian of the 2D version of the gaussian bell function.
 
@@ -90,9 +94,16 @@ def gauss2D_jac(v, c, a, x0, y0, sx, sy):
     df_dy0 = a*dy*e/sy**2
     df_dsx = a*dx**2*e/sx**3
     df_dsy = a*dy**2*e/sy**3
-    return np.array([df_dc, df_da, df_dx0, df_dy0, df_dsx, df_dsy]).T
-    
-    
+    rv = np.empty((6,len(x)))
+    rv[0] = df_dc
+    rv[1] = df_da
+    rv[2] = df_dx0
+    rv[3] = df_dy0
+    rv[4] = df_dsx
+    rv[5] = df_dsy
+    return rv.T
+
+
 def extract_fit_values(contour, r, phi, vals, reference_point, periodicity=None):
     mask = contour["mask"]
     inds = contour["stats"][reference_point]
@@ -286,7 +297,6 @@ class Gauss2DFitter:
 
         bounds = (lower, upper)
         popt, pcov = curve_fit(f, (x, y), z, p0=p0,
-                               bounds=bounds, sigma=weights
-                               ,jac=gauss2D_jac)
+                               bounds=bounds, sigma=weights, jac=gauss2D_jac)
 
         return popt, pcov
