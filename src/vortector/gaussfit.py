@@ -54,7 +54,45 @@ def gauss2D(v, c, a, x0, y0, sx, sy):
     argy = -(y - y0)**2 / (2 * sy**2)
     return c + a*np.exp(argx+argy)
 
+def gauss2D_jac(v, c, a, x0, y0, sx, sy):
+    """ Jacobian of the 2D version of the gaussian bell function.
 
+    Parameters
+    ----------
+    v: tuple of two array
+        x and y coordinates
+    c: float
+        Offset
+    a: float
+        Amplitute
+    x0: float
+        Center in x.
+    y0: float
+        Center in y.
+    sx : float
+        Standard deviation in x.
+    sy : float
+        Standard deviation in y.
+    Returns
+    -------
+    array
+        Function values.  
+    """
+    x, y = v
+    dx = x-x0
+    dy = y-y0
+    argx = -dx**2 / (2 * sx**2)
+    argy = -dy**2 / (2 * sy**2)
+    e = np.exp(argx+argy)
+    df_dc = np.ones_like(x)
+    df_da = e
+    df_dx0 = a*dx*e/sx**2
+    df_dy0 = a*dy*e/sy**2
+    df_dsx = a*dx**2*e/sx**3
+    df_dsy = a*dy**2*e/sy**3
+    return np.array([df_dc, df_da, df_dx0, df_dy0, df_dsx, df_dsy]).T
+    
+    
 def extract_fit_values(contour, r, phi, vals, reference_point, periodicity=None):
     mask = contour["mask"]
     inds = contour["stats"][reference_point]
@@ -248,6 +286,7 @@ class Gauss2DFitter:
 
         bounds = (lower, upper)
         popt, pcov = curve_fit(f, (x, y), z, p0=p0,
-                               bounds=bounds, sigma=weights)
+                               bounds=bounds, sigma=weights
+                               ,jac=gauss2D_jac)
 
         return popt, pcov
