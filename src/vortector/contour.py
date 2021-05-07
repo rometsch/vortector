@@ -432,6 +432,7 @@ def calc_diff_area(bx, by, px, py):
     return area
 
 
+@njit
 def ellipse_deviation_semianalytic(boundary_pnts, ellipse, area):
     bx = boundary_pnts[:, 0, 0]
     by = boundary_pnts[:, 0, 1]
