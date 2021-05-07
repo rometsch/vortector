@@ -69,13 +69,13 @@ class Vortector:
                 for s in ["pnt_xlow", "pnt_xhigh", "pnt_ylow", "pnt_yhigh"]:
                     c[s] = transform_indices(c[s], trafo)
 
+        self.remove_duplicates_by_geometry()
         self.calculate_contour_properties()
-
         self.vortices = []
         for c in self.candidates:
             self.vortices.append({"contour": c})
 
-        self.remove_duplicates_by_boundary_area()
+        # self.remove_duplicates_by_boundary_area()
         self.sort_vortices_by_mass()
         self.create_hierarchy_by_min_vort_pos()
 
@@ -202,6 +202,36 @@ class Vortector:
 
         self.print(
             f"Removed {len(to_del)} candidates by common boundary area. {len(self.vortices)} remaining")
+        
+    def remove_duplicates_by_geometry(self):
+        """ Remove remaining duplicates. 
+
+        Hash the array of boundary points and look for matches.
+        Remove the contour with the lower contour value.
+        """
+        to_del = []
+
+        for n_can, c in enumerate(self.candidates):
+            if n_can in to_del:
+                continue
+            bbox = [c[f"pnt_{key}"] for key in ["xlow", "xhigh", "ylow", "yhigh"]]
+            area = c["detection"]["pixel_area"]
+
+            for n_other, o in enumerate(self.candidates):
+                if n_other == n_can:
+                    continue
+                o_bbox = [o[f"pnt_{key}"] for key in ["xlow", "xhigh", "ylow", "yhigh"]]
+                o_area = o["detection"]["pixel_area"]
+
+                if area == o_area and bbox == o_bbox:
+                    to_del.append(n_other)
+
+        to_del = set(to_del)
+        self.candidates = [v for n, v in enumerate(
+            self.candidates) if not n in to_del]
+
+        self.print(
+            f"Removed {len(to_del)} candidates by common area and bbox. {len(self.candidates)} remaining")
 
     def create_hierarchy_by_min_vort_pos(self):
         """ Create a hierarchy of the vortex candidates.
