@@ -220,7 +220,6 @@ def contour_image(SNx, SNy, vortensity, levels, min_image_size=1000, periodic=Fa
 
 def contour_threshold(data, threshold):
     image = data < threshold
-    image = image / np.max(image) * 255
     image = image.astype(np.uint8)
     contours, _ = cv2.findContours(
         image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
