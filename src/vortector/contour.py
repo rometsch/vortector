@@ -41,9 +41,9 @@ def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse
 
     contours_largest = find_contours(data, levels, verbose=verbose)
     contours_closed = extract_closed_contours(
-        pad, Nx, Ny, contours_largest, max_ellipse_aspect_ratio, verbose=verbose)
-    if periodic:
-        remove_periodic_duplicates(contours_closed, Ny, pad)
+        pad, Nx, Ny, contours_largest, max_ellipse_aspect_ratio,
+        periodic=periodic, verbose=verbose)
+    remove_duplicates_by_geometry(contours_closed, verbose=verbose)
 
     deviation_method = "semianalytic"  # configvalue
     contours = extract_ellipse_contours(
@@ -84,6 +84,37 @@ def extend_array(data):
     pad_high = Ny - pad_low
     extended = np.pad(data, ((0, 0), (pad_low, pad_high)), mode="wrap")
     return extended, (pad_low, pad_high)
+
+
+def remove_duplicates_by_geometry(contours, verbose=False, Ny=None, periodic=False):
+    """ Remove duplicate contours.
+
+    Sort out one of multiple contours that have the same area and bounding box.
+    """
+    to_del = []
+
+    for n_can, c in enumerate(contours):
+        if n_can in to_del:
+            continue
+        bbox = c["bbox_inds"]
+        area = c["pixel_area"]
+
+        for n_other, o in enumerate(contours):
+            if n_other == n_can:
+                continue
+            o_bbox = o["bbox_inds"]
+            o_area = o["pixel_area"]
+
+            if area == o_area and (bbox == o_bbox).all():
+                to_del.append(n_other)
+
+    to_del = set(to_del)
+    for k, n in enumerate(to_del):
+        del contours[n-k]
+
+    if verbose:
+        print(
+            f"Removed {len(to_del)} contours which were duplicates. {len(contours)} remaining.")
 
 
 def remove_boundary_cases(candidates, shape):
@@ -222,7 +253,7 @@ def find_contours(data, levels, verbose=False):
     return contours_largest
 
 
-def extract_closed_contours(pad, Nx, Ny, contours_largest, max_ellipse_aspect_ratio, verbose=False):
+def extract_closed_contours(pad, Nx, Ny, contours_largest, max_ellipse_aspect_ratio, periodic=False, verbose=False):
     # Extract closed contours
 
     contours_closed = []
@@ -238,18 +269,6 @@ def extract_closed_contours(pad, Nx, Ny, contours_largest, max_ellipse_aspect_ra
 
         dx = pnt_xhigh[0] - pnt_xlow[0]
         dy = pnt_yhigh[1] - pnt_ylow[1]
-
-        bounding_x = np.array([pnt_xlow[0], pnt_xhigh[0]])
-        bounding_y = np.array([pnt_ylow[1], pnt_yhigh[1]])
-        contour["bounding_x_img"] = bounding_x
-        contour["bounding_y_img"] = bounding_y
-        # save the bounding points
-        contour["pnt_xlow_img"] = pnt_xlow
-        contour["pnt_xhigh_img"] = pnt_xhigh
-        contour["pnt_ylow_img"] = pnt_ylow
-        contour["pnt_yhigh_img"] = pnt_yhigh
-        contour["dx_img"] = dx
-        contour["dy_img"] = dy
 
         # sort out mirrors of contours fully contained in original area
         # if pnt_xhighmost[1] < pad[0] or pnt_xlowmost[1] > Ny+pad[1]:
@@ -268,6 +287,30 @@ def extract_closed_contours(pad, Nx, Ny, contours_largest, max_ellipse_aspect_ra
         if not is_not_spanning_whole_height:
             # print("discarding because is_not_spanning_whole_height", dy, Ny)
             continue
+
+        bounding_x = np.array([pnt_xlow[0], pnt_xhigh[0]])
+        bounding_y = np.array([pnt_ylow[1], pnt_yhigh[1]])
+        contour["bounding_x_img"] = bounding_x
+        contour["bounding_y_img"] = bounding_y
+        # save the bounding points
+        contour["pnt_xlow_img"] = pnt_xlow
+        contour["pnt_xhigh_img"] = pnt_xhigh
+        contour["pnt_ylow_img"] = pnt_ylow
+        contour["pnt_yhigh_img"] = pnt_yhigh
+        contour["dx_img"] = dx
+        contour["dy_img"] = dy
+
+        for key in ["pnt_xlow", "pnt_xhigh", "pnt_ylow", "pnt_yhigh"]:
+            x, y = contour[key + "_img"]
+            if periodic:
+                y = (y - pad[0]) % Ny
+            x = int(np.round(x))
+            y = int(np.round(y))
+            contour[key] = (x, y)
+
+        bbox_inds = np.array([contour[key] for key in
+                              ["pnt_xlow", "pnt_xhigh", "pnt_ylow", "pnt_yhigh"]])
+        contour["bbox_inds"] = bbox_inds
 
         contours_closed.append(contour)
 
@@ -493,8 +536,6 @@ def create_vortex_mask(candidates, Ny, pad, periodic=False):
             x = int(np.round(x))
             y = int(np.round(y))
             candidate[key] = (x, y)
-
-
 
 
 def generate_ancestors(candidates, hierarchy):
