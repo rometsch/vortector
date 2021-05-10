@@ -64,7 +64,7 @@ def overflow(x):
     return c_int64(x).value
 
 
-@njit
+@njit(cache=True)
 def extrapolate2d(xsb, ysb, dx, dy, perm):
     index = perm[(perm[xsb & 0xFF] + ysb) & 0xFF] & 0x0E
     g1 = GRADIENTS_2D[index]
@@ -72,7 +72,7 @@ def extrapolate2d(xsb, ysb, dx, dy, perm):
     return g1 * dx + g2 * dy
 
 
-@njit
+@njit(cache=True)
 def noise2d_array(Nx, Ny, featuresize, perm):
     rv = np.empty((Nx, Ny))
     for nx in range(Nx):
@@ -81,7 +81,7 @@ def noise2d_array(Nx, Ny, featuresize, perm):
     return rv
 
 
-@njit
+@njit(cache=True)
 def noise2d(x, y, perm):
     """
     Generate 2D OpenSimplex noise from X,Y coordinates.

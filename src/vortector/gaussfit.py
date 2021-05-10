@@ -26,7 +26,7 @@ def gauss(x, c, a, x0, sigma):
     return a * np.exp(-(x - x0)**2 / (2 * sigma**2)) + c
 
 
-@njit
+@njit(cache=True)
 def gauss2D(v, c, a, x0, y0, sx, sy):
     """ A 2D version of the gaussian bell function.
 
@@ -57,7 +57,7 @@ def gauss2D(v, c, a, x0, y0, sx, sy):
     return c + a*np.exp(argx+argy)
 
 
-@njit
+@njit(cache=True)
 def gauss2D_jac(v, c, a, x0, y0, sx, sy):
     """ Jacobian of the 2D version of the gaussian bell function.
 
@@ -296,7 +296,8 @@ class Gauss2DFitter:
         f = gauss2D
 
         bounds = (lower, upper)
-        popt, pcov = curve_fit(f, (x, y), z, p0=p0,
-                               bounds=bounds, sigma=weights, jac=gauss2D_jac)
+        popt, pcov = curve_fit(
+            f, (x, y), z, p0=p0, bounds=bounds, sigma=weights, 
+            jac=gauss2D_jac, method="trf")
 
         return popt, pcov

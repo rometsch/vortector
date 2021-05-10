@@ -382,7 +382,7 @@ def extract_ellipse_contours(img_shape, contours_closed, max_ellipse_deviation, 
     return candidates
 
 
-@njit
+@njit(cache=True)
 def ellipse_pnt(x, y, ellipse):
     angle = ellipse[2]/180*np.pi
     cx = ellipse[0][0]
@@ -406,7 +406,7 @@ def ellipse_pnt(x, y, ellipse):
     return px, py
 
 
-@njit()
+@njit(cache=True)
 def triangle_area(x1, y1, x2, y2, x3, y3):
     signed_area = (
         x3 * (y1 - y2)
@@ -416,12 +416,12 @@ def triangle_area(x1, y1, x2, y2, x3, y3):
     return np.abs(signed_area)
 
 
-@njit()
+@njit(cache=True)
 def tetragon_area(x1, y1, x2, y2, x3, y3, x4, y4):
     return triangle_area(x1, y1, x2, y2, x3, y3) + triangle_area(x1, y1, x3, y3, x4, y4)
 
 
-@njit()
+@njit(cache=True)
 def calc_diff_area(bx, by, px, py):
     area = 0.0
     for n in range(len(px)-1):
@@ -432,7 +432,7 @@ def calc_diff_area(bx, by, px, py):
     return area
 
 
-@njit
+@njit(cache=True)
 def ellipse_deviation_semianalytic(boundary_pnts, ellipse, area):
     bx = boundary_pnts[:, 0, 0]
     by = boundary_pnts[:, 0, 1]
