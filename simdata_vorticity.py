@@ -1,6 +1,23 @@
 import numpy as np
 import astropy
 import astropy.units as u
+import simdata
+import os
+import pickle
+
+
+cache_dir = "simulation_data_cache"
+
+def provide_simulation_data(simid, Noutput, skip_cache=False):
+    cache = DataCache(cache_dir, f"{simid}")
+    if Noutput in cache.data and not skip_cache:
+        rv = cache.data[Noutput]
+    else:
+        simulation = simdata.SData(simid)
+        rv = calc_quantities(simulation, Noutput)
+        cache.data[Noutput] = rv
+        cache.save()
+    return rv
 
 def calc_quantities(simulation, Noutput, normalize_by = "initial"):
     M_star = 1*u.solMass
@@ -57,7 +74,7 @@ def calc_quantities(simulation, Noutput, normalize_by = "initial"):
     R = Xc
     A = DR*R*DPHI
 
-    N_roll = -np.argmax(phi[1:] - phi[:-1] < 0)
+    N_roll = np.argmax(phi[1:] - phi[:-1] < 0)
     X = np.roll(X, N_roll, axis=1)
     Y = np.roll(Y, N_roll, axis=1)
     Xc = np.roll(Xc, N_roll, axis=1)
@@ -66,7 +83,7 @@ def calc_quantities(simulation, Noutput, normalize_by = "initial"):
     vortensity = np.roll(vortensity, N_roll, axis=1)
     Rho = np.roll(Rho, N_roll, axis=1)
     Rho_background = np.roll(Rho_background, N_roll, axis=1)
-    return X, Y, Xc, Yc, A, vortensity, vorticity, Rho, Rho_background
+    return Xc, Yc, A, vortensity, vorticity, Rho, Rho_background
 
 def map_angles(phi, phi_min=-np.pi):
     """ Map angles to the range [phi_min, phi_min + 2pi]
@@ -203,3 +220,35 @@ def velocity_cartesian_simdata(data, Noutput):
     return (x, y, vx, vy)
 
 
+class DataCache:
+
+    def __init__(self, cache_dir, name, info=""):
+        self.cache_dir = cache_dir
+        self.name = name
+        self.create_cache_dir()
+        self.data_file = os.path.join(cache_dir, name + ".cache.pickle")
+        self.load()
+
+    def create_cache_dir(self):
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir)
+
+    def load(self):
+        if os.path.exists(self.data_file):
+            with open(self.data_file, "rb") as in_file:
+                self.data = pickle.load(in_file)
+        else:
+            self.data = {}
+
+    def save(self):
+        with open(self.data_file, "wb") as out_file:
+            pickle.dump(self.data, out_file)
+
+    def update_info(self, info):
+        if info == "":
+            return
+        if "info" in self.data:
+            if self.data["info"][-1] != info:
+                self.data["info"].append(info)
+        else:
+            self.data["info"] = [info]
