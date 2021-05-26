@@ -8,37 +8,24 @@ import pickle
 
 cache_dir = "simulation_data_cache"
 
-def provide_simulation_data(simid, Noutput, skip_cache=False):
+def provide_simulation_data(simid, Noutput, skip_cache=False, normalize_by = "initial", calc_kwargs=dict()):
     cache = DataCache(cache_dir, f"{simid}")
     if Noutput in cache.data and not skip_cache:
         rv = cache.data[Noutput]
     else:
         simulation = simdata.SData(simid)
-        rv = calc_quantities(simulation, Noutput)
+        rv = calc_quantities(simulation, Noutput, normalize_by=normalize_by, **calc_kwargs)
         cache.data[Noutput] = rv
         cache.save()
     return rv
 
-def calc_quantities(simulation, Noutput, normalize_by = "initial"):
+def calc_quantities(simulation, Noutput, normalize_by = "initial", return_Nroll=False):
     M_star = 1*u.solMass
     rho = simulation.fluids["gas"].get("2d", "mass density", Noutput)
-    r = rho.grid.get_centers("r")
-    phi = rho.grid.get_interfaces("phi")
-    phi = map_angles(phi.to_value("rad"))
-    if np.isclose(phi[-1],-np.pi):
-        phi[-1] = np.pi
-    phi = phi*u.rad
-    PHI_rho, R_rho = np.meshgrid(phi, r)
-    x_rho = R_rho*np.cos(PHI_rho)
-    y_rho = R_rho*np.sin(PHI_rho)
+    r_c = rho.grid.get_centers("r")
     phi_c = rho.grid.get_centers("phi")
-    phi_c = map_angles((phi_c).to_value("rad"))
-    if phi_c[-1] == 0.0:
-        phi_c[-1] = 2*np.pi
-    phi_c = phi_c*u.rad
-    PHI_c, R_c = np.meshgrid(phi_c, r)
-    xc = R_c*np.cos(PHI_c)
-    yc = R_c*np.sin(PHI_c)
+    phi_c = map_angles(phi_c.to_value("rad"))*u.rad
+    PHI_c, R_c = np.meshgrid(phi_c, r_c)
 
     dr = rho.grid.get_sizes("r").to_value("au")
     dphi = rho.grid.get_sizes("phi").to_value("rad")
@@ -54,6 +41,7 @@ def calc_quantities(simulation, Noutput, normalize_by = "initial"):
 
     if normalize_by == "initial":
         vortensity = vorticity/Rho * Rho_background / vorticity_Kepler
+        vorticity = vorticity / vorticity_Kepler
     elif normalize_by == "median":
         vortensity = vorticity/Rho
         vortensity_med = np.median(vortensity, axis=1)
@@ -67,25 +55,30 @@ def calc_quantities(simulation, Noutput, normalize_by = "initial"):
     
 #     vortensity[vortensity < -1] = -1
 
-    X = R_rho.to_value("au")
-    Y = PHI_rho.to_value("rad")
     Xc = R_c.to_value("au")
     Yc = PHI_c.to_value("rad")
     R = Xc
     A = DR*R*DPHI
 
-    N_roll = np.argmax(phi[1:] - phi[:-1] < 0)
-    X = np.roll(X, N_roll, axis=1)
-    Y = np.roll(Y, N_roll, axis=1)
-    Xc = np.roll(Xc, N_roll, axis=1)
-    Yc = np.roll(Yc, N_roll, axis=1)
-    vorticity = np.roll(vorticity, N_roll, axis=1)
-    vortensity = np.roll(vortensity, N_roll, axis=1)
-    Rho = np.roll(Rho, N_roll, axis=1)
-    Rho_background = np.roll(Rho_background, N_roll, axis=1)
-    return Xc, Yc, A, vortensity, vorticity, Rho, Rho_background
+    rv = roll_data(phi_c, Xc, Yc, A, vortensity, vorticity, Rho, Rho_background, return_Nroll=return_Nroll)
+    
+    return rv
 
-def map_angles(phi, phi_min=-np.pi):
+
+def roll_data(phi, *args, return_Nroll=False):
+    sign_changes = phi[1:] - phi[:-1] < 0
+    sign_change_pos = np.argmax(sign_changes)
+    N_roll = len(sign_changes) - sign_change_pos
+    if sign_change_pos == 0:
+        if (~sign_changes).all():
+            return args
+    rv = [np.roll(x, N_roll, axis=1) for x in args]
+    if return_Nroll:
+        rv += [N_roll]
+    return rv
+
+
+def map_angles(phi, interval = (-np.pi, np.pi)):
     """ Map angles to the range [phi_min, phi_min + 2pi]
 
     Parameters
@@ -95,14 +88,9 @@ def map_angles(phi, phi_min=-np.pi):
     phi_min: float
         Lower bound.
     """
-    phi_max = phi_min + 2*np.pi
-    phi = phi % (2*np.pi)
-    if isinstance(phi, np.ndarray):
-        phi[phi > phi_max] -= 2*np.pi
-    else:
-        if phi > phi_max:
-            phi -= 2*np.pi
-    return phi
+    phimin = interval[0]
+    phimax = interval[1]    
+    return (phi - phimin) % (phimax - phimin) + phimin
 
 
 def vorticity_simdata(data, Noutput, rref=None):
@@ -116,7 +104,7 @@ def vorticity_simdata(data, Noutput, rref=None):
     try:
         omega_frame = data.planets[0].get(
             "omega frame").get_closest_to_time(t).to("s-1")
-    except KeyError:
+    except (KeyError, IndexError):
         omega_frame = (1/data.loader.units["time"]).to("s-1")
 
     dvrad_dphi = derivative_vrad_phi(data, Noutput)
@@ -156,7 +144,7 @@ def derivative_vazi_r(data, Noutput, rref=None):
 
     try:
         Mstar = data.planets[0].get("mass")[0]
-    except KeyError:
+    except (KeyError, IndexError):
         Mstar = 1*u.solMass
         print("Warning: Assumed a start mass of 1 solar mass!")
 
@@ -195,6 +183,7 @@ def velocity_cartesian_simdata(data, Noutput):
 
     rs = vrad.grid.get_centers("r")
     phi = vrad.grid.get_centers("phi")
+    phi = map_angles(phi.to_value("rad"))
 
     PHI, R = np.meshgrid(phi, rs)
 
@@ -202,22 +191,63 @@ def velocity_cartesian_simdata(data, Noutput):
     y = R*np.sin(PHI)
 
     # centered velocities
-    vrad_c = vrad.data[:-1, :]
-    #vazi_c = vazi.data - np.tile(np.mean(vazi.data, axis=1), (vazi.data.shape[1], 1) ).transpose()
+    if vrad.data.shape[0] != len(rs):
+        vrad_c = vrad.data[:-1, :]
+    else:
+        vrad_c = vrad.data    #vazi_c = vazi.data - np.tile(np.mean(vazi.data, axis=1), (vazi.data.shape[1], 1) ).transpose()
     G = astropy.constants.G
     try:
         Mstar = data.planets[0].get("mass")[0]
-    except KeyError:
+    except (KeyError, IndexError):
         Mstar = 1*u.solMass
         print("Warning: Assumed a start mass of 1 solar mass!")
+    try:
+        omega_frame = data.planets[0].get("omega frame")[0]
+    except (KeyError, IndexError):
+        omega_frame = (1/data.loader.units["time"]).to("s-1")
     v_K = np.sqrt(G*Mstar/R).to("cm/s")
-    v_Frame = 0.5*1.6792048484108891e-08*1/u.s*R
+    v_Frame = omega_frame.to("s-1")*R
+    v_K = np.sqrt(G*Mstar/R).to("cm/s")
+    v_Frame = omega_frame*R
     vazi_c = vazi.data - v_K + v_Frame
 
     vx = vrad_c*np.cos(PHI) - vazi_c*np.sin(PHI)
     vy = vrad_c*np.sin(PHI) + vazi_c*np.cos(PHI)
 
-    return (x, y, vx, vy)
+    return roll_data(phi ,x, y, vx, vy)
+
+
+def velocity_polar_simdata(data, Noutput):
+    vrad = data.fluids["gas"].get("2d", "velocity radial", Noutput)
+    vazi = data.fluids["gas"].get("2d", "velocity azimuthal", Noutput)
+
+    rs = vrad.grid.get_centers("r")
+    phi = vrad.grid.get_centers("phi")
+    phi = map_angles(phi.to_value("rad"))
+
+    PHI, R = np.meshgrid(phi, rs)
+
+    # centered velocities
+    if vrad.data.shape[0] != len(rs):
+        vrad_c = vrad.data[:-1, :]
+    else:
+        vrad_c = vrad.data
+    #vazi_c = vazi.data - np.tile(np.mean(vazi.data, axis=1), (vazi.data.shape[1], 1) ).transpose()
+    G = astropy.constants.G
+    try:
+        Mstar = data.planets[0].get("mass")[0]
+    except (KeyError, IndexError):
+        Mstar = 1*u.solMass
+        print("Warning: Assumed a start mass of 1 solar mass!")
+    try:
+        omega_frame = data.planets[0].get("omega frame")[0]
+    except (KeyError, IndexError):
+        omega_frame = (1/data.loader.units["time"]).to("s-1")
+    v_K = np.sqrt(G*Mstar/R).to("cm/s")
+    v_Frame = omega_frame.to("s-1")*R
+    vazi_c = vazi.data + v_Frame
+
+    return roll_data(phi, vrad_c, vazi_c, v_K)
 
 
 class DataCache:
