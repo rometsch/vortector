@@ -6,73 +6,81 @@ from numba import njit
 
 from uuid import uuid4 as generate_uuid
 
+class ContourDetector:
+    
+    def __init__(self, data, levels, periodic=True, verbose=False):
+        self.data = data
+        self.levels = levels
+        self.periodic = periodic
+        self.verbose = verbose
 
-def detect_elliptic_contours(data, levels, max_ellipse_aspect_ratio, max_ellipse_deviation, periodic=True, blur=None, verbose=False):
-    """ Detect closed equivalue lines in a 2D contour plot of the data.
+    def detect_elliptic_contours(self, max_ellipse_aspect_ratio=100, max_ellipse_deviation=0.15, blur=None):
+        """ Detect closed equivalue lines in a 2D contour plot of the data.
 
-    1. create a contour line image of the data
-    2. find closed contours
-    3. fit ellipses to contours
-    4. remove contours that are enclosed in another one
+        1. create a contour line image of the data
+        2. find closed contours
+        3. fit ellipses to contours
+        4. remove contours that are enclosed in another one
 
-    Parameters
-    ----------
-    data : numpy.array 2D
-        2D array of values to be analyzed.
-    levels : array of floats
-        Value levels for which to analyze equivalue lines.
-    max_ellipse_aspect_ratio : float
-        Maximum aspect ratio for ellipses.
-    max_ellipse_deviation : float
-        Maximum threshold for the deviation of a contour area to the fitted ellipse.
-    blur : int
-        Width of the gaussian filter. Default None
-    verbose : bool
-        Verbose output. Default False.
+        Parameters
+        ----------
+        data : numpy.array 2D
+            2D array of values to be analyzed.
+        levels : array of floats
+            Value levels for which to analyze equivalue lines.
+        max_ellipse_aspect_ratio : float
+            Maximum aspect ratio for ellipses.
+        max_ellipse_deviation : float
+            Maximum threshold for the deviation of a contour area to the fitted ellipse.
+        blur : int
+            Width of the gaussian filter. Default None
+        verbose : bool
+            Verbose output. Default False.
 
-    Returns
-    -------
-    dict
-        Dictionary of the candidate contours with information stored in dictionaries. 
-    """
-    if blur is not None:
-        data = gaussian_blur(data, blur)
+        Returns
+        -------
+        dict
+            Dictionary of the candidate contours with information stored in dictionaries. 
+        """
+        if blur is not None:
+            self.data = gaussian_blur(self.data, blur)
 
-    Nx, Ny = data.shape
-    data, pad = extend_array(data)
+        self.Nx, self.Ny = self.data.shape
+        self.data_extended, self.pad = extend_array(self.data)
 
-    contours_largest = find_contours(data, levels, verbose=verbose)
-    contours_closed = extract_closed_contours(
-        pad, Nx, Ny, contours_largest, max_ellipse_aspect_ratio,
-        periodic=periodic, verbose=verbose)
-    remove_duplicates_by_geometry(contours_closed, verbose=verbose)
+        self.contours_largest = find_contours(self.data_extended, self.levels, verbose=self.verbose)
+        self.contours_closed = extract_closed_contours(
+            self.pad, self.Nx, self.Ny, self.contours_largest, max_ellipse_aspect_ratio,
+            periodic=self.periodic, verbose=self.verbose)
+        # self.contoures_closed_dedup = remove_duplicates_by_geometry(self.contours_closed, verbose=self.verbose)
+        self.contoures_closed_dedup = self.contours_closed
 
-    deviation_method = "semianalytic"  # configvalue
+        deviation_method = "semianalytic"  # configvalue
 
-    contours = extract_ellipse_contours(
-        data.shape, contours_closed, max_ellipse_deviation,
-        deviation_method=deviation_method)
+        self.contours = extract_ellipse_contours(
+            self.data_extended.shape, self.contours_closed, max_ellipse_deviation,
+            deviation_method=deviation_method)
 
-    # generate_ancestors(contours, hierarchy)
-    # generate_descendants(contours)
-    # prune_candidates_by_hierarchy(contours)
+        # generate_ancestors(contours, hierarchy)
+        # generate_descendants(contours)
+        # prune_candidates_by_hierarchy(contours)
 
-    parameters = {
-        "Nx": Nx,
-        "Ny": Ny,
-        "max_ellipse_aspect_ratio": max_ellipse_aspect_ratio,
-        "max_ellipse_deviation": max_ellipse_deviation,
-        "levels": [float(x) for x in levels]
-    }
+        parameters = {
+            "Nx": self.Nx,
+            "Ny": self.Ny,
+            "max_ellipse_aspect_ratio": max_ellipse_aspect_ratio,
+            "max_ellipse_deviation": max_ellipse_deviation,
+            "levels": [float(x) for x in self.levels]
+        }
 
-    for contour in contours.values():
-        contour["parameters"] = parameters
+        for contour in self.contours.values():
+            contour["parameters"] = parameters
 
-    candidates = [{"detection": contour} for contour in contours.values()]
-    create_vortex_mask(candidates, Ny, pad, periodic=periodic)
-    remove_empty_contours(candidates)
+        self.candidates = [{"detection": contour} for contour in self.contours.values()]
+        create_vortex_mask(self.candidates, self.Ny, self.pad, periodic=self.periodic)
+        # remove_empty_contours(self.candidates)
 
-    return candidates
+        return self.candidates
 
 
 def gaussian_blur(data, sigma):
@@ -82,11 +90,12 @@ def gaussian_blur(data, sigma):
 
 def extend_array(data):
     """ Periodically extend the array in y direction. """
-    Nx, Ny = data.shape
+    _, Ny = data.shape
     pad_low = Ny//2
     pad_high = Ny - pad_low
-    extended = np.pad(data, ((0, 0), (pad_low, pad_high)), mode="wrap")
-    return extended, (pad_low, pad_high)
+    pad = (pad_low, pad_high)
+    extended = np.pad(data, ((0, 0), pad), mode="wrap")
+    return extended, pad
 
 
 def remove_duplicates_by_geometry(contours, verbose=False, Ny=None, periodic=False):
@@ -112,19 +121,22 @@ def remove_duplicates_by_geometry(contours, verbose=False, Ny=None, periodic=Fal
                 to_del.append(n_other)
 
     to_del = set(to_del)
-    for k, n in enumerate(to_del):
-        del contours[n-k]
+    # for k, n in enumerate(to_del):
+    #     del contours[n-k]
+
+    contours_dedup = [contours[n] for n in range(len(contours)) if n not in to_del]
 
     if verbose:
         print(
             f"Removed {len(to_del)} contours which were duplicates. {len(contours)} remaining.")
 
+    return contours_dedup
 
 def remove_boundary_cases(candidates, shape):
     """ Remove contours which overlap with the boundary.
 
     These are likely artifacts of the contour detection process.
-
+StepBySteo
     Check wether any of the bounding points lies on the image boundary.
     """
     to_del = []
@@ -268,6 +280,13 @@ def extract_closed_contours(pad, Nx, Ny, contours_largest, max_ellipse_aspect_ra
         pnt_yhigh = cnt[cnt[:, :, 0].argmax()][0][::-1]
         pnt_xlow = cnt[cnt[:, :, 1].argmin()][0][::-1]
         pnt_xhigh = cnt[cnt[:, :, 1].argmax()][0][::-1]
+
+        # discard contours at the top and bottom boundary
+        if periodic:
+            if pnt_ylow[1] == 0:
+                continue
+            if abs(pnt_yhigh[1] - 2*Ny) <= 1:
+                continue
 
         dx = pnt_xhigh[0] - pnt_xlow[0]
         dy = pnt_yhigh[1] - pnt_ylow[1]
