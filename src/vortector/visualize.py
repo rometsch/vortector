@@ -150,7 +150,7 @@ def show_fit_overview_2D(vt, n=None, fig=None, bnd_lines=False, bnd_pnts=False, 
     if leg is not None:
         leg.remove()
     if len(vt.vortices) > 0:
-        ax.set_ylim(-0.5, 1.5)
+        ax.set_ylim(vt.levels[0], vt.levels[-1])
         xticks = ax.get_yticks()
         vallim = ax.get_ylim()
         try:
@@ -203,7 +203,7 @@ def show_fit_overview_2D(vt, n=None, fig=None, bnd_lines=False, bnd_pnts=False, 
 
     # for ax in [axes[1, 0], axes[1, 3]]:
     #     ax.set_yticklabels(yticklabels)
-
+    return fig
 
 def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
                                 bnd_pnts=True, show_fits=True, fit_contours=True,
@@ -314,7 +314,10 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
                 else:
                     plot_ellipse_periodic(
                         ax, r0, phi0, w, h, color=color_vortensity, ls="-", lw=lw)
-
+            except KeyError:
+                pass
+            
+            try:
                 r0 = vort["fits"]["surface_density"]["r0"]
                 sigma_r = vort["fits"]["surface_density"]["sigma_r"]
                 w = 2*np.sqrt(2*np.log(2))*sigma_r
