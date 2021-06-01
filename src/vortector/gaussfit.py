@@ -2,7 +2,6 @@ import numpy as np
 from scipy.optimize import curve_fit
 from numba import njit
 
-
 def gauss(x, c, a, x0, sigma):
     """ A gaussian bell function.
 
@@ -133,22 +132,26 @@ def extract_fit_values(contour, r, phi, vals, reference_point, periodicity=None)
     return R, PHI, Z, r0, phi0, c_ref
 
 
-def fit_2D_gaussian_surface_density(contour, r, phi, Z, r0, phi0, c_ref, periodicity=None):
+def fit_2D_gaussian_surface_density(r, phi, Z, c_ref, periodicity=None):
 
     c_guess = c_ref
     a_guess = np.max(Z) - c_guess
+
+    n = np.argmax(Z)
+    r0 = r[n]
+    phi0 = phi[n]
 
     dr = np.max(r) - np.min(r)
     dphi = np.max(phi) - np.min(phi)
     fitter = Gauss2DFitter(r, phi, Z,
                            p0={"x0": r0, "y0": phi0,
                                "c": 0.8*c_ref, "a": a_guess},
-                           blow={"c": 0.75*c_ref, "a": 0.75*a_guess,
+                           blow={"c": 0.75*c_ref, "a": 0.5*a_guess,
                                  "x0": r0-0.25*dr, "y0": phi0-0.25*dphi},
-                           bup={"c": 1.25*c_ref, "a": 1.25*a_guess,
+                           bup={"c": 1.25*c_ref, "a": 2*a_guess,
                                 "x0": r0+0.25*dr, "y0": phi0+0.25*dphi},
                            )
-    p, cov = fitter.fit()
+    p, p0, cov = fitter.fit()
 
     if periodicity is not None:
         up = periodicity["upper"]
@@ -158,11 +161,15 @@ def fit_2D_gaussian_surface_density(contour, r, phi, Z, r0, phi0, c_ref, periodi
 
     fit = {"c": p[0], "a": p[1], "r0": p[2], "phi0": p[3],
            "sigma_r": p[4], "sigma_phi": p[5], "popt": p, "pcov": cov,
-           "bounds_low": fitter.blow, "bounds_high": fitter.bup}
+           "bounds_low": fitter.blow, "bounds_high": fitter.bup, "p0" : p0}
     return fit
 
 
-def fit_2D_gaussian_vortensity(contour, r, phi, Z, r0, phi0, c_ref, periodicity=None):
+def fit_2D_gaussian_vortensity(r, phi, Z, c_ref, periodicity=None):
+
+    n = np.argmin(Z)
+    r0 = r[n]
+    phi0 = phi[n]
 
     c_guess = c_ref
     a_guess = np.min(Z) - c_guess
@@ -172,7 +179,7 @@ def fit_2D_gaussian_vortensity(contour, r, phi, Z, r0, phi0, c_ref, periodicity=
                                "c": c_ref, "a": a_guess},
                            blow={"c": 0.75*c_ref, "a": 1.25*a_guess},
                            bup={"c": 1.25*c_ref, "a": 0.75*a_guess})
-    p, cov = fitter.fit()
+    p, p0, cov = fitter.fit()
 
     if periodicity is not None:
         up = periodicity["upper"]
@@ -182,7 +189,7 @@ def fit_2D_gaussian_vortensity(contour, r, phi, Z, r0, phi0, c_ref, periodicity=
 
     fit = {"c": p[0], "a": p[1], "r0": p[2], "phi0": p[3],
            "sigma_r": p[4], "sigma_phi": p[5], "popt": p, "pcov": cov,
-           "bounds_low": fitter.blow, "bounds_high": fitter.bup}
+           "bounds_low": fitter.blow, "bounds_high": fitter.bup, "p0" : p0}
     return fit
 
 
@@ -202,13 +209,13 @@ class Gauss2DFitter:
 
         self.blow = {key: -np.inf for key in self.parameters}
         self.bup = {key: np.inf for key in self.parameters}
-        self.blow["sx"] = 0
         self.bup["sx"] = np.max(x)-np.min(x)
+        self.blow["sx"] = self.bup["sx"]/20
         self.blow["x0"] = np.min(x)
         self.bup["x0"] = np.max(x)
 
-        self.blow["sy"] = 0
-        self.bup["sy"] = min((np.max(y)-np.min(y)), np.pi/2)
+        self.bup["sy"] = min((np.max(y)-np.min(y)), np.pi)
+        self.blow["sy"] = self.bup["sy"]/20
         self.blow["y0"] = np.min(y)
         self.bup["y0"] = np.max(y)
 
@@ -232,22 +239,24 @@ class Gauss2DFitter:
     def guess_p0(self):
         x = self.x
         y = self.y
-        x0_guess = 0.5*(np.max(x) + np.min(x))
-        sx_guess = 0.5*(np.max(x) - np.min(x))
+        z = self.z
+        v = np.array([x,y])
+        sx = 0.5*(np.max(x) - np.min(x))
+        sy = 0.5*(np.max(y) - np.min(y))
 
-        y0_guess = 0.5*(np.max(y) + np.min(y))
-        sy_guess = 0.5*(np.max(y) - np.min(y))
+        v0 = np.sum(v* np.abs(z-np.median(z)), axis=1)/len(x)
+        x0, y0 = v0
 
         zavg = np.average(self.z)
-        c_guess = zavg
-        a_guess = zavg
+        c = zavg
+        a = zavg
         p0 = {
-            "c": c_guess,
-            "a": a_guess,
-            "x0": x0_guess,
-            "y0": y0_guess,
-            "sx": sx_guess,
-            "sy": sy_guess
+            "c": c,
+            "a": a,
+            "x0": x0,
+            "y0": y0,
+            "sx": sx,
+            "sy": sy
         }
 
         # apply manually passed guesses
@@ -264,13 +273,13 @@ class Gauss2DFitter:
 
     def fit(self):
         self.guess_p0()
-        popt, pcov = self.fit_single()
+        popt, p0, pcov = self.fit_single()
 
         if self.weights is None and self.autoweight:
             peak_value = popt[0] + popt[1]  # y0 + a
             self.calc_weights(peak_value)
-            popt, pcov = self.fit_single()
-        return popt, pcov
+            popt, p0, pcov = self.fit_single()
+        return popt, p0, pcov
 
     def calc_weights(self, peak_value):
         difference = np.abs(self.y - peak_value)
@@ -285,19 +294,19 @@ class Gauss2DFitter:
             np.exp(-(dx/sx)**2 - (dy/sy)**2)
 
     def fit_single(self):
-        x = self.x
-        y = self.y
-        z = self.z
-        weights = self.weights
-        lower = [self.blow[key] for key in self.parameters]
-        upper = [self.bup[key] for key in self.parameters]
-        p0 = [self.p0[key] for key in self.parameters]
+        x = np.array(self.x, dtype=np.float64)
+        y = np.array(self.y, dtype=np.float64)
+        z = np.array(self.z, dtype=np.float64)
+        weights = np.array(self.weights, dtype=np.float64)
+        lower = np.array([self.blow[key] for key in self.parameters], dtype=np.float64)
+        upper = np.array([self.bup[key] for key in self.parameters], dtype=np.float64)
+        p0 = np.array([self.p0[key] for key in self.parameters], dtype=np.float64)
 
         f = gauss2D
 
         bounds = (lower, upper)
         popt, pcov = curve_fit(
-            f, (x, y), z, p0=p0, bounds=bounds, sigma=weights, 
+            f, (x, y), z, p0=p0, bounds=bounds, #sigma=weights, 
             jac=gauss2D_jac, method="trf")
 
-        return popt, pcov
+        return popt, p0, pcov
