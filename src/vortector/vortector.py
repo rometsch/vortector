@@ -404,7 +404,7 @@ class Vortector:
             v["fits"][varname]["properties"][f"{region}_mass_fit"] = np.sum(
                 fitvals*area)
 
-    def extract_data(self, vortex, region="contour"):
+    def extract_data(self, vortex, region="contour", aux_fields=None):
         """Extract the data inside the vortex region. 
 
         Parameters
@@ -421,6 +421,15 @@ class Vortector:
                 Use the surface density fit FWHM ellipse as region.
             If region=="combined":
                 Use the combination of all of the above regions.
+            aux_fields : list of 2d arrays
+                Additional arrays from which to extract data.
+                These arrays must have the same shape as self.radius.
+        
+        Returns
+        -------
+        [R, PHI, Sigma, Vortensity, Mask, ...] : list of 2d arrays
+            A list containing radius, azimuth, surface density, vortensity, 
+            a vortex mask and all aux fields.
         """
         mask = self.get_mask(vortex, region=region)
         bbox = self.get_bbox(vortex, region=region)
@@ -430,33 +439,23 @@ class Vortector:
         ylow = bbox["ylow"]["inds"][1]
         yhigh = bbox["yhigh"]["inds"][1]
 
+        if mask is None:
+            mask = np.ones(self.radius.shape, dtype=bool)
+
+        full_data = [self.radius, self.azimuth, self.surface_density, self.vortensity, mask]
+        if aux_fields is not None:
+            full_data += aux_fields
+        rv = []
         if ylow < yhigh:
-            r = self.radius[xlow:xhigh, ylow:yhigh]
-            phi = self.azimuth[xlow:xhigh, ylow:yhigh]
-            dens = self.surface_density[xlow:xhigh, ylow:yhigh]
-            vort = self.vortensity[xlow:xhigh, ylow:yhigh]
-            if mask is not None:
-                mask = mask[xlow:xhigh, ylow:yhigh]
-            else:
-                mask = np.ones(r.shape, dtype=bool)
+            for X in full_data:
+                rv.append(X[xlow:xhigh, ylow:yhigh])
         else:
             Ny = self.radius.shape[1]
-            r = np.pad(self.radius, [[0, 0], [0, yhigh]], mode="wrap")[
-                xlow:xhigh, ylow:Ny+yhigh]
-            phi = np.pad(self.azimuth, [[0, 0], [0, yhigh]], mode="wrap")[
-                xlow:xhigh, ylow:Ny+yhigh]
-            phi[phi < self.azimuth[0, ylow]] += self.periodicity["L"]
-            dens = np.pad(self.surface_density, [[0, 0], [0, yhigh]], mode="wrap")[
-                xlow:xhigh, ylow:Ny+yhigh]
-            vort = np.pad(self.vortensity, [[0, 0], [0, yhigh]], mode="wrap")[
-                xlow:xhigh, ylow:Ny+yhigh]
-            if mask is not None:
-                mask = np.pad(mask, [[0, 0], [0, yhigh]], mode="wrap")[
-                    xlow:xhigh, ylow:Ny+yhigh]
-            else:
-                mask = np.ones(r.shape, dtype=bool)
-
-        return r, phi, vort, dens, mask
+            for X in full_data:
+                rv.append(np.pad(X, [[0, 0], [0, yhigh]], mode="wrap")[xlow:xhigh, ylow:Ny+yhigh])
+            # adjust wrapped values for phi coordinate
+            rv[1][rv[1] < self.azimuth[0, ylow]] += self.periodicity["L"]
+        return rv
 
     def merge_bounding_boxes(self, bb1, bb2):
         bbox = {}
