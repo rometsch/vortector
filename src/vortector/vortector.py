@@ -2,14 +2,16 @@ import numpy as np
 
 from . import analyze
 from .gaussfit import fit_2D_gaussian_vortensity, fit_2D_gaussian_surface_density, gauss2D
-from .contour import detect_elliptic_contours
+from .contour import ContourDetector
 from .interpolation import *
 
 
 class Vortector:
     def __init__(self, radius, azimuth, area, vortensity, surface_density,
                  levels=None,
-                 med=0.15, mear=np.inf, mvd=0.1, verbose=False, azimuthal_boundaries=[-np.pi, np.pi]):
+                 med=0.15, mear=np.inf, mvd=0.1, verbose=False,
+                 azimuthal_boundaries=[-np.pi, np.pi],
+                 debug=False):
 
         self.vortensity = vortensity
 
@@ -38,6 +40,7 @@ class Vortector:
         self.mvd = mvd  # min_vortensity_drop
 
         self.verbose = verbose
+        self.debug = debug
 
         self.mass = self.area*self.surface_density
 
@@ -54,13 +57,10 @@ class Vortector:
         else:
             contour_data = self.vortensity
 
-        self.candidates = detect_elliptic_contours(
-            contour_data,
-            self.levels,
-            self.mear,
-            self.med,
-            verbose=self.verbose,
-            periodic=True,
+        self.contour_detector = ContourDetector(contour_data, self.levels, periodic=True, verbose=self.verbose)
+        self.candidates = self.contour_detector.detect_elliptic_contours(
+            max_ellipse_aspect_ratio=self.mear,
+            max_ellipse_deviation=self.med,
             **kwargs)
         self.print(f"Detected {len(self.candidates)} elliptic contours.")
 
@@ -309,45 +309,49 @@ class Vortector:
         phi = phi.ravel()
         vort = vort.ravel()
         dens = dens.ravel()
+        vortex["fits"] = dict()
         try:
-            r0, phi0 = vortex["contour"]["stats"]["vortensity_min_pos"]
             r0_ind = vortex["contour"]["stats"]["vortensity_min_inds"][0]
             oazi = self.vortensity[r0_ind, ~mask_full[r0_ind]]
             background_val = np.sort(oazi)[-len(oazi)//4]
             fit = fit_2D_gaussian_vortensity(
-                vortex["contour"],
-                r, phi, vort,
-                r0, phi0, background_val,
+                r, phi, vort, background_val,
                 periodicity=self.periodicity)
-            vortex["fits"] = {"vortensity": fit}
+            vortex["fits"]["vortensity"] =  fit
             vortex["fits"]["vortensity"]["fit_region"] = region
         except (ValueError, RuntimeError) as e:
-            self.print(
-                "Warning: Error while fitting vortensity:", e)
-            pass
+            if self.debug:
+                raise
+            else:
+                self.print(
+                    "Warning: Error while fitting vortensity:", e)
+                pass
         try:
             background_val = 1.0
-            r0, phi0 = vortex["contour"]["stats"]["surface_density_max_pos"]
             r0_ind = vortex["contour"]["stats"]["surface_density_max_inds"][0]
             oazi = self.surface_density[r0_ind, ~mask_full[r0_ind]]
             background_val = np.sort(oazi)[len(oazi)//4]
             fit = fit_2D_gaussian_surface_density(
-                vortex["contour"],
-                r, phi, dens,
-                r0, phi0, background_val,
+                r, phi, dens, background_val,
                 periodicity=self.periodicity)
             vortex["fits"]["surface_density"] = fit
             vortex["fits"]["surface_density"]["fit_region"] = region
         except (ValueError, RuntimeError) as e:
-            self.print(
-                "Warning: Error while fitting surface density:", e)
-            pass
+            if self.debug:
+                raise
+            else:
+                self.print(
+                    "Warning: Error while fitting surface density:", e)
+                pass
         try:
             self.calc_fit_difference_2D(vortex)
         except KeyError as e:
-            self.print(
-                "Warning: KeyError encountered in calculating fit differences:", e)
-            pass
+            if self.debug:
+                raise
+            else:
+                self.print(
+                    "Warning: KeyError encountered in calculating fit differences:", e)
+                pass
 
     def calc_fit_difference_2D(self, v, varname="surface_density"):
         """ Calculate the difference of the fit to the data.
