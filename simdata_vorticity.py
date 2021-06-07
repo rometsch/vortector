@@ -8,18 +8,18 @@ import pickle
 
 cache_dir = "simulation_data_cache"
 
-def provide_simulation_data(simid, Noutput, skip_cache=False, normalize_by = "initial", calc_kwargs=dict()):
+def provide_simulation_data(simid, Noutput, skip_cache=False, calc_kwargs=dict()):
     cache = DataCache(cache_dir, f"{simid}")
     if Noutput in cache.data and not skip_cache:
         rv = cache.data[Noutput]
     else:
         simulation = simdata.SData(simid)
-        rv = calc_quantities(simulation, Noutput, normalize_by=normalize_by, **calc_kwargs)
+        rv = calc_quantities(simulation, Noutput, **calc_kwargs)
         cache.data[Noutput] = rv
         cache.save()
     return rv
 
-def calc_quantities(simulation, Noutput, normalize_by = "initial", return_Nroll=False):
+def calc_quantities(simulation, Noutput, normalize_by = None, return_Nroll=False):
     M_star = 1*u.solMass
     rho = simulation.fluids["gas"].get("2d", "mass density", Noutput)
     r_c = rho.grid.get_centers("r")
@@ -36,10 +36,12 @@ def calc_quantities(simulation, Noutput, normalize_by = "initial", return_Nroll=
     
     vorticity = vorticity_simdata(simulation, Noutput)
     Omega_Kepler = np.sqrt(astropy.constants.G * M_star / R_c**3).decompose()
-    vorticity_Kepler = (0.5*Omega_Kepler).to_value("1/s")
-    vorticity = vorticity.to_value(1/u.s)
+    vorticity_Kepler = (0.5*Omega_Kepler).to_value("1/yr")
+    vorticity = vorticity.to_value("1/yr")
 
-    if normalize_by == "initial":
+    if normalize_by is None:
+        vortensity = vorticity/Rho
+    elif normalize_by == "initial":
         vortensity = vorticity/Rho * Rho_background / vorticity_Kepler
         vorticity = vorticity / vorticity_Kepler
     elif normalize_by == "median":
@@ -55,13 +57,12 @@ def calc_quantities(simulation, Noutput, normalize_by = "initial", return_Nroll=
     
 #     vortensity[vortensity < -1] = -1
 
-    Xc = R_c.to_value("au")
-    Yc = PHI_c.to_value("rad")
-    R = Xc
+    R = R_c.to_value("au")
+    Phi = PHI_c.to_value("rad")
+    R = R
     A = DR*R*DPHI
 
-    rv = roll_data(phi_c, Xc, Yc, A, vortensity, vorticity, Rho, Rho_background, return_Nroll=return_Nroll)
-    
+    rv = roll_data(phi_c, R, Phi, A, vorticity, vorticity_Kepler, Rho, Rho_background, return_Nroll=return_Nroll)
     return rv
 
 
@@ -69,10 +70,11 @@ def roll_data(phi, *args, return_Nroll=False):
     sign_changes = phi[1:] - phi[:-1] < 0
     sign_change_pos = np.argmax(sign_changes)
     N_roll = len(sign_changes) - sign_change_pos
-    if sign_change_pos == 0:
-        if (~sign_changes).all():
-            return args
-    rv = [np.roll(x, N_roll, axis=1) for x in args]
+    if sign_change_pos == 0 and (~sign_changes).all():
+        N_roll = 0
+        rv = [x for x in args]
+    else:
+        rv = [np.roll(x, N_roll, axis=1) for x in args]
     if return_Nroll:
         rv += [N_roll]
     return rv
@@ -146,7 +148,7 @@ def derivative_vazi_r(data, Noutput, rref=None):
         Mstar = data.planets[0].get("mass")[0]
     except (KeyError, IndexError):
         Mstar = 1*u.solMass
-        print("Warning: Assumed a start mass of 1 solar mass!")
+        print("Warning: Assumed a star mass of 1 solar mass!")
 
     if rref is not None:
         rref = rref*u.au
@@ -200,7 +202,7 @@ def velocity_cartesian_simdata(data, Noutput):
         Mstar = data.planets[0].get("mass")[0]
     except (KeyError, IndexError):
         Mstar = 1*u.solMass
-        print("Warning: Assumed a start mass of 1 solar mass!")
+        print("Warning: Assumed a star mass of 1 solar mass!")
     try:
         omega_frame = data.planets[0].get("omega frame")[0]
     except (KeyError, IndexError):
@@ -238,7 +240,7 @@ def velocity_polar_simdata(data, Noutput):
         Mstar = data.planets[0].get("mass")[0]
     except (KeyError, IndexError):
         Mstar = 1*u.solMass
-        print("Warning: Assumed a start mass of 1 solar mass!")
+        print("Warning: Assumed a star mass of 1 solar mass!")
     try:
         omega_frame = data.planets[0].get("omega frame")[0]
     except (KeyError, IndexError):

@@ -17,17 +17,24 @@ def main():
     simid = args.simulation
     Noutput = args.Noutput
 
-    levels = [float(x) for x in np.arange(-1, 1.5, 0.05)]
+    levels = [float(x) for x in np.arange(-1, 1, 0.05)]
 
-    Xc, Yc, A, vortensity, _, Rho, _ = provide_simulation_data(simid, Noutput)
+    R, Phi, A, vorticity, vorticity_Kepler, Rho, Rho_background = provide_simulation_data(
+        simid, Noutput)
+
+    if args.vorticity:
+        detection_quantity = vorticity/vorticity_Kepler
+    else:
+        vortensity = vorticity/vorticity_Kepler * Rho_background/Rho
+        detection_quantity = vortensity
 
     if args.rlim is not None:
         Rlims = args.rlim
     else:
         Rlims = [5.2, 15]
-    nl = np.argmin(np.abs(Xc[:, 0]-Rlims[0]))
-    nr = np.argmin(np.abs(Xc[:, 0]-Rlims[1]))
-    vd = vortector.Vortector(Xc[nl:nr, :], Yc[nl:nr, :], A[nl:nr, :], vortensity[nl:nr, :], Rho[nl:nr, :],
+    nl = np.argmin(np.abs(R[:, 0]-Rlims[0]))
+    nr = np.argmin(np.abs(R[:, 0]-Rlims[1]))
+    vd = vortector.Vortector(R[nl:nr, :], Phi[nl:nr, :], A[nl:nr, :], detection_quantity[nl:nr, :], Rho[nl:nr, :],
                              verbose=False, med=0.15, mear=np.inf,
                              levels=levels
                              )
@@ -36,6 +43,11 @@ def main():
 
     vortector.visualize.show_fit_overview_2D(vd)
     fig = plt.gca().get_figure()
+
+    if args.vorticity:
+        for ax in fig.axes:
+            if ax.get_xlabel() == r"$\varpi/\varpi_0$":
+                ax.set_xlabel(r"$(\nabla \times \vec{v})_z \,/\, 0.5 \Omega_\mathrm{K}$")
 
     name = smurf.search.search(simid)[0]["name"]
     fig.suptitle(f"{simid} | {name} | N = {Noutput}")
@@ -47,6 +59,7 @@ def parse_cli_args():
     parser.add_argument("simulation", type=str, help="Simulation ID.")
     parser.add_argument("Noutput", type=int, help="Output number.")
     parser.add_argument("--rlim", type=float, nargs=2, help="Radial limits.")
+    parser.add_argument("--vorticity", action="store_true", help="Use vorticity instead of vortensity.")
     args = parser.parse_args()
     return args
 
