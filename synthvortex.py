@@ -56,28 +56,20 @@ class VortexGenerator:
         density = self.c_dens*np.ones((self.Nr, self.Nphi))
 
         for r0, sigma_r, phi0, sigma_phi, a_vort, a_dens in self.vortex_params:
-            ex = np.exp(- 0.5*(self.Rs-r0)**2/sigma_r**2)
-            ey = np.exp(- 0.5*(self.Phis-phi0)**2/sigma_phi**2)
+            if self.periodic_y:
+                Phis_arg = ((self.Phis - phi0) - self.phimin) % self.Lphi + self.phimin
+            else:
+                Phis_arg = self.Phis - phi0
+            if self.periodic_x:
+                Rs_arg = ((self.Rs - r0) - self.rmin) % self.Lr + self.rmin
+            else:
+                Rs_arg = self.Rs - r0
+            
+            ex = np.exp(- 0.5*Rs_arg**2/sigma_r**2)
+            ey = np.exp(- 0.5*Phis_arg**2/sigma_phi**2)
             profile = ex*ey
             vorticity += a_vort*profile
             density += a_dens*profile
-            if self.periodic_x:
-                Dx = self.Lr if r0 < 0.5*(self.rmin + self.rmax) else -self.Lr
-                ex_per = np.exp(- 0.5*(self.Rs - (r0+Dx))**2/sigma_r**2)
-                profile = ex_per*ey
-                vorticity += a_vort*profile
-                density += a_dens*profile
-            if self.periodic_y:
-                Dy = self.Lphi if phi0 < 0.5 * \
-                    (self.phimin + self.phimax) else -self.Lphi
-                ey_per = np.exp(- 0.5*(self.Phis - (phi0+Dy))**2/sigma_phi**2)
-                profile = ex*ey_per
-                vorticity += a_vort*profile
-                density += a_dens*profile
-            if self.periodic_x and self.periodic_y:
-                profile = ex_per*ey_per
-                vorticity += a_vort*profile
-                density += a_dens*profile
 
         if self.noise > 0:
             vorticity += self.noise*self.a_vort * \
