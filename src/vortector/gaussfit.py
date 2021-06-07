@@ -214,7 +214,7 @@ class Gauss2DFitter:
         self.blow["x0"] = np.min(x)
         self.bup["x0"] = np.max(x)
 
-        self.bup["sy"] = min((np.max(y)-np.min(y)), np.pi)
+        self.bup["sy"] = min((np.max(y)-np.min(y)), np.pi/2)
         self.blow["sy"] = self.bup["sy"]/20
         self.blow["y0"] = np.min(y)
         self.bup["y0"] = np.max(y)

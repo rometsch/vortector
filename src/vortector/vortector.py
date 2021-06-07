@@ -446,7 +446,7 @@ class Vortector:
         if mask is None:
             mask = np.ones(self.radius.shape, dtype=bool)
 
-        full_data = [self.radius, self.azimuth, self.surface_density, self.vortensity, mask]
+        full_data = [self.radius, self.azimuth, self.vortensity, self.surface_density, mask]
         if aux_fields is not None:
             full_data += aux_fields
         rv = []
