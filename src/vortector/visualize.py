@@ -427,6 +427,11 @@ def show_radial_fit(vt, ax, key, n, ref="contour", fitcolor="C1", datacolor="C0"
     ref : str
         Reference for the vortex region (contour/vortensity/sigma).
     """
+    vals = select_fit_quantity(vt, key)
+    x = vt.radius[:, 0]
+    average_color = "C7"
+    ax.fill_between(x, np.min(vals, axis=1), np.max(vals, axis=1), alpha=0.2, color=average_color)
+    ax.plot(x, np.average(vals, axis=1), color=average_color, alpha=0.4)
     try:
         vortex = vt.vortices[n]
     except IndexError:
@@ -436,12 +441,10 @@ def show_radial_fit(vt, ax, key, n, ref="contour", fitcolor="C1", datacolor="C0"
         center = ref if center is None else center
         inds = select_center_inds(vt, vortex, center)
         mask_r, mask_phi = select_fit_region(vt, vortex, ref)
-        vals = select_fit_quantity(vt, key)
 
         mask = mask_r
 
         y = vals[:, inds[1]]
-        x = vt.radius[:, 0]
 
         ax.plot(x, y, label=f"data slice n={n}", color=datacolor)
 
