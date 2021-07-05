@@ -205,9 +205,11 @@ def show_fit_overview_2D(vt, n=None, fig=None, bnd_lines=False, bnd_pnts=False, 
     #     ax.set_yticklabels(yticklabels)
     return fig
 
+
 def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
                                 bnd_pnts=True, show_fits=True, fit_contours=True,
-                                cbar_axes=None, cmap="magma"):
+                                cbar_axes=None, cmap="magma", cbar_orientation="horizontal",
+                                cbar_label=None):
     import matplotlib.patheffects as pe
     Xc = vt.radius
     Yc = vt.azimuth
@@ -258,7 +260,8 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
     if n is None:
         if main_vortex is not None:
             vortices = [main_vortex] + \
-                [v for v in vt.vortices if v["contour"]["detection"]["uuid"] != main_vortex["contour"]["detection"]["uuid"]]
+                [v for v in vt.vortices if v["contour"]["detection"]
+                    ["uuid"] != main_vortex["contour"]["detection"]["uuid"]]
         else:
             vortices = []
     else:
@@ -292,12 +295,14 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
         blow = -np.pi
         bup = np.pi
         L = bup - blow
-        if show_fits:
-            try:
-                lw = 1
-                path_effects = [
-                    pe.Stroke(linewidth=2*lw, foreground='w'), pe.Normal()]
 
+        if show_fits:
+            lw = 1
+            path_effects = [
+                pe.Stroke(linewidth=2*lw, foreground='w'), pe.Normal()]
+
+        if type(show_fits) == bool or "vortensity" in show_fits:
+            try:
                 r0 = vort["fits"]["vortensity"]["r0"]
                 sigma_r = vort["fits"]["vortensity"]["sigma_r"]
                 w = 2*np.sqrt(2*np.log(2))*sigma_r
@@ -316,7 +321,8 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
                         ax, r0, phi0, w, h, color=color_vortensity, ls="-", lw=lw)
             except KeyError:
                 pass
-            
+
+        if type(show_fits) == bool or "surface_density" in show_fits:
             try:
                 r0 = vort["fits"]["surface_density"]["r0"]
                 sigma_r = vort["fits"]["surface_density"]["sigma_r"]
@@ -333,10 +339,6 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
                     plot_ellipse_periodic(
                         ax, r0, phi0, w, h, color="C2", ls="-", lw=lw)
 
-                mask = vt.get_mask(vort, region="combined")
-                ax.contour(Xc, Yc, mask, 
-                           levels=[0, 1, 2], linewidths=1, cmap="rainbow_r")   
-                
             except KeyError:
                 pass
 
@@ -351,9 +353,11 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
     ax.set_ylim(-np.pi, np.pi)
 
     if cbar_axes is None:
-        cbar = ax.get_figure().colorbar(img, ax=ax, orientation="horizontal")
+        cbar = ax.get_figure().colorbar(img, ax=ax, orientation=cbar_orientation)
     else:
-        cbar = ax.get_figure().colorbar(img, ax=cbar_axes, orientation="horizontal")
+        cbar = ax.get_figure().colorbar(img, ax=cbar_axes, orientation=cbar_orientation)
+    if cbar_label is not None:
+        label = cbar_label
     cbar.set_label(label)
 
 
@@ -430,7 +434,8 @@ def show_radial_fit(vt, ax, key, n, ref="contour", fitcolor="C1", datacolor="C0"
     vals = select_fit_quantity(vt, key)
     x = vt.radius[:, 0]
     average_color = "C7"
-    ax.fill_between(x, np.min(vals, axis=1), np.max(vals, axis=1), alpha=0.2, color=average_color)
+    ax.fill_between(x, np.min(vals, axis=1), np.max(
+        vals, axis=1), alpha=0.2, color=average_color)
     ax.plot(x, np.average(vals, axis=1), color=average_color, alpha=0.4)
     try:
         vortex = vt.vortices[n]
