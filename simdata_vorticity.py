@@ -9,14 +9,18 @@ import pickle
 cache_dir = "simulation_data_cache"
 
 def provide_simulation_data(simid, Noutput, skip_cache=False, calc_kwargs=dict()):
-    cache = DataCache(cache_dir, f"{simid}")
-    if Noutput in cache.data and not skip_cache:
-        rv = cache.data[Noutput]
-    else:
+    if skip_cache:
         simulation = simdata.SData(simid)
         rv = calc_quantities(simulation, Noutput, **calc_kwargs)
-        cache.data[Noutput] = rv
-        cache.save()
+    else:
+        cache = DataCache(cache_dir, f"{simid}")
+        if Noutput in cache.data:
+            rv = cache.data[Noutput]
+        else:
+            simulation = simdata.SData(simid)
+            rv = calc_quantities(simulation, Noutput, **calc_kwargs)
+            cache.data[Noutput] = rv
+            cache.save()
     return rv
 
 def calc_quantities(simulation, Noutput, normalize_by = None, return_Nroll=False):
