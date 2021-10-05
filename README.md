@@ -2,7 +2,7 @@
 
 A vortex detector for planet-disk simulation data.
 
-Version 1.0 was used in [Rometsch et al. 2021 - Survival of planet-induced vortices in 2D disks](https://ui.adsabs.harvard.edu/search/q=%20%20author%3A%22%5Erometsch%2C%20t%22%20year%3A2021&sort=date%20desc%2C%20bibcode%20desc&p_=0).
+Version 1.0 was used in [Rometsch et al. 2021 - Survival of planet-induced vortices in 2D disks](https://ui.adsabs.harvard.edu/abs/2021arXiv211000589R/abstract).
 
 This is work in progress! Documentation is only provided via docstrings in the source files and the Jupyter notebooks in this repository cam be viewed as tutorials on how to use the Vortector.
 
