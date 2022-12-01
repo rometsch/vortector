@@ -1,7 +1,7 @@
 import numpy as np
 import astropy
 import astropy.units as u
-import simdata
+import disgrid
 import os
 import pickle
 
@@ -10,14 +10,20 @@ cache_dir = "simulation_data_cache"
 
 def provide_simulation_data(simid, Noutput, skip_cache=False, calc_kwargs=dict()):
     if skip_cache:
-        simulation = simdata.SData(simid)
+        try:
+            simulation = disgrid.NData(simid)
+        except AttributeError:
+            simulation = disgrid.Data(simid)
         rv = calc_quantities(simulation, Noutput, **calc_kwargs)
     else:
         cache = DataCache(cache_dir, f"{simid}")
         if Noutput in cache.data:
             rv = cache.data[Noutput]
         else:
-            simulation = simdata.SData(simid)
+            try:
+                simulation = disgrid.NData(simid)
+            except AttributeError:
+                simulation = disgrid.Data(simid)
             rv = calc_quantities(simulation, Noutput, **calc_kwargs)
             cache.data[Noutput] = rv
             cache.save()
@@ -25,7 +31,7 @@ def provide_simulation_data(simid, Noutput, skip_cache=False, calc_kwargs=dict()
 
 def calc_quantities(simulation, Noutput, normalize_by = None, return_Nroll=False):
     M_star = 1*u.solMass
-    rho = simulation.fluids["gas"].get("2d", "mass density", Noutput)
+    rho = simulation.get(dim="2d", var="mass density", N=Noutput)
     r_c = rho.grid.get_centers("r")
     phi_c = rho.grid.get_centers("phi")
     phi_c = map_angles(phi_c.to_value("rad"))*u.rad
@@ -35,10 +41,10 @@ def calc_quantities(simulation, Noutput, normalize_by = None, return_Nroll=False
     dphi = rho.grid.get_sizes("phi").to_value("rad")
     DPHI, DR = np.meshgrid(dphi, dr)
 
-    Rho_background = simulation.fluids["gas"].get("2d", "mass density", 0).data.to_value("solMass/au2")
-    Rho = simulation.fluids["gas"].get("2d", "mass density", Noutput).data.to_value("solMass/au2")
+    Rho_background = simulation.get(dim="2d", var="mass density", N=0).data.to_value("solMass/au2")
+    Rho = simulation.get(dim="2d", var="mass density", N=Noutput).data.to_value("solMass/au2")
     
-    vorticity = vorticity_simdata(simulation, Noutput)
+    vorticity = vorticity_disgrid(simulation, Noutput)
     Omega_Kepler = np.sqrt(astropy.constants.G * M_star / R_c**3).decompose()
     vorticity_Kepler = (0.5*Omega_Kepler).to_value("1/yr")
     vorticity = vorticity.to_value("1/yr")
@@ -99,8 +105,8 @@ def map_angles(phi, interval = (-np.pi, np.pi)):
     return (phi - phimin) % (phimax - phimin) + phimin
 
 
-def vorticity_simdata(data, Noutput, rref=None):
-    vrad = data.fluids["gas"].get("2d", "velocity radial", Noutput)
+def vorticity_disgrid(data, Noutput, rref=None):
+    vrad = data.get(dim="2d", var="velocity radial", N=Noutput)
     rs = vrad.grid.get_centers("r")
     phi = vrad.grid.get_centers("phi")
 
@@ -108,8 +114,10 @@ def vorticity_simdata(data, Noutput, rref=None):
 
     t = vrad.get_time()
     try:
-        omega_frame = data.planets[0].get(
-            "omega frame").get_closest_to_time(t).to("s-1")
+        of = data.get(
+            var="omega frame", planet=0)
+        nclosest = np.argmin(np.abs(of.time -t ))
+        omega_frame = of.data[nclosest].to("s-1")
     except (KeyError, IndexError):
         omega_frame = (1/data.loader.units["time"]).to("s-1")
 
@@ -121,7 +129,7 @@ def vorticity_simdata(data, Noutput, rref=None):
 
 
 def derivative_vrad_phi(data, Noutput):
-    vrad = data.fluids["gas"].get("2d", "velocity radial", Noutput)
+    vrad = data.get(dim="2d", var="velocity radial", N=Noutput)
 
     rsi = vrad.grid.get_coordinates("r")
     phii = vrad.grid.get_coordinates("phi")
@@ -132,24 +140,25 @@ def derivative_vrad_phi(data, Noutput):
     phic = vrad.grid.get_centers("phi")
     PHIc, Rc = np.meshgrid(phic, rsc)
 
-    if data.loader.code_info[0].lower().startswith("fargo"):
+    code_name = data.avail()["code"][0].lower()
+    if code_name.startswith("fargo"):
         Rplus = Ri[1:, :]
         Rminus = Ri[:-1, :]
         vplus = vrad.data[1:, :]
         vminus = vrad.data[:-1, :]
         # interpolate to cell centers
         vr = vminus + (vplus - vminus)/(Rplus - Rminus)*(Rc-Rminus)
-    elif data.loader.code_info[0].lower().startswith("pluto"):
+    elif code_name.startswith("pluto"):
         vr = vrad.data
     dvrad_dphi = np.gradient(vr.to_value('cm/s'), phic.to_value('rad'), axis=1)
     return dvrad_dphi*u.cm/u.s
 
 
 def derivative_vazi_r(data, Noutput, rref=None):
-    vazi = data.fluids["gas"].get("2d", "velocity azimuthal", Noutput)
+    vazi = data.get(dim="2d", var="velocity azimuthal", N=Noutput)
 
     try:
-        Mstar = data.planets[0].get("mass")[0]
+        Mstar = data.get(var="mass", planet=0).data[0]
     except (KeyError, IndexError):
         Mstar = 1*u.solMass
         print("Warning: Assumed a star mass of 1 solar mass!")
@@ -183,9 +192,9 @@ def derivative_vazi_r(data, Noutput, rref=None):
     return dvazi_dr/u.s, va
 
 
-def velocity_cartesian_simdata(data, Noutput):
-    vrad = data.fluids["gas"].get("2d", "velocity radial", Noutput)
-    vazi = data.fluids["gas"].get("2d", "velocity azimuthal", Noutput)
+def velocity_cartesian_disgrid(data, Noutput):
+    vrad = data.get(dim="2d", var="velocity radial", N=Noutput)
+    vazi = data.get(dim="2d", var="velocity azimuthal", N=Noutput)
 
     rs = vrad.grid.get_centers("r")
     phi = vrad.grid.get_centers("phi")
@@ -203,12 +212,12 @@ def velocity_cartesian_simdata(data, Noutput):
         vrad_c = vrad.data    #vazi_c = vazi.data - np.tile(np.mean(vazi.data, axis=1), (vazi.data.shape[1], 1) ).transpose()
     G = astropy.constants.G
     try:
-        Mstar = data.planets[0].get("mass")[0]
+        Mstar = data.get(var="mass", planet=0).data[0]
     except (KeyError, IndexError):
         Mstar = 1*u.solMass
         print("Warning: Assumed a star mass of 1 solar mass!")
     try:
-        omega_frame = data.planets[0].get("omega frame")[0]
+        omega_frame = data.get(var="omega frame", planet=0).data[0]
     except (KeyError, IndexError):
         omega_frame = (1/data.loader.units["time"]).to("s-1")
     v_K = np.sqrt(G*Mstar/R).to("cm/s")
@@ -223,9 +232,9 @@ def velocity_cartesian_simdata(data, Noutput):
     return roll_data(phi ,x, y, vx, vy)
 
 
-def velocity_polar_simdata(data, Noutput):
-    vrad = data.fluids["gas"].get("2d", "velocity radial", Noutput)
-    vazi = data.fluids["gas"].get("2d", "velocity azimuthal", Noutput)
+def velocity_polar_disgrid(data, Noutput):
+    vrad = data.get(dim="2d", var="velocity radial", N=Noutput)
+    vazi = data.get(dim="2d", var="velocity azimuthal", N=Noutput)
 
     rs = vrad.grid.get_centers("r")
     phi = vrad.grid.get_centers("phi")
@@ -241,12 +250,12 @@ def velocity_polar_simdata(data, Noutput):
     #vazi_c = vazi.data - np.tile(np.mean(vazi.data, axis=1), (vazi.data.shape[1], 1) ).transpose()
     G = astropy.constants.G
     try:
-        Mstar = data.planets[0].get("mass")[0]
+        Mstar = data.get(var="mass", planet=0).data[0]
     except (KeyError, IndexError):
         Mstar = 1*u.solMass
         print("Warning: Assumed a star mass of 1 solar mass!")
     try:
-        omega_frame = data.planets[0].get("omega frame")[0]
+        omega_frame = data.get(var="omega frame", planet=0).data[0]
     except (KeyError, IndexError):
         omega_frame = (1/data.loader.units["time"]).to("s-1")
     v_K = np.sqrt(G*Mstar/R).to("cm/s")

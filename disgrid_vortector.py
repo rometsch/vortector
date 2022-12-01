@@ -6,18 +6,20 @@ if os.uname().nodename == "cpt-mars":
     mpl.use('gtk3agg')
 else:
     mpl.use('agg')
-import smurf
 import matplotlib.pyplot as plt
 import vortector
 import vortector.visualize
 import argparse
 import numpy as np
-from simdata_vorticity import provide_simulation_data
+from disgrid_vorticity import provide_simulation_data
 
 
 
 def main():
     options = parse_cli_args()
+    if options.outfile is None:
+        mpl.use('Tkagg')
+
     simid = options.simulation
     Noutput = options.Noutput
     
@@ -61,7 +63,12 @@ def main():
             if ax.get_xlabel() == r"$\varpi/\varpi_0$":
                 ax.set_xlabel(r"$(\nabla \times \vec{v})_z \,/\, 0.5 \Omega_\mathrm{K}$")
 
-    name = smurf.search.search(simid)[0]["name"]
+    try:
+        import smurf
+        name = smurf.search.search(simid)[0]["name"]
+    except (ImportError, KeyError, IndexError):
+        name = ""
+        
     fig.suptitle(f"{simid} | {name} | N = {Noutput}")
     
     if options.outfile is not None:
