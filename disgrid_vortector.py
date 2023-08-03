@@ -40,7 +40,7 @@ def main():
     if options.rlim is not None:
         Rlims = options.rlim
     else:
-        Rlims = [5.2, 15]
+        Rlims = [R[0,0], R[-1,0]]
     nl = np.argmin(np.abs(R[:, 0]-Rlims[0]))
     nr = np.argmin(np.abs(R[:, 0]-Rlims[1]))
 
