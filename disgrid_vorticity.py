@@ -10,10 +10,14 @@ cache_dir = "simulation_data_cache"
 
 def provide_simulation_data(simid, Noutput, skip_cache=False, calc_kwargs=dict()):
     if skip_cache:
-        try:
-            simulation = disgrid.NData(simid)
-        except AttributeError:
+        if os.path.exists(simid):
+            print(f"Loading local simulation data from {simid}")
             simulation = disgrid.Data(simid)
+        else:
+            try:
+                simulation = disgrid.NData(simid, update=skip_cache)
+            except AttributeError:
+                simulation = disgrid.Data(simid)
         rv = calc_quantities(simulation, Noutput, **calc_kwargs)
     else:
         cache = DataCache(cache_dir, f"{simid}")
@@ -217,7 +221,7 @@ def velocity_cartesian_disgrid(data, Noutput):
         Mstar = 1*u.solMass
         print("Warning: Assumed a star mass of 1 solar mass!")
     try:
-        omega_frame = data.get(var="omega frame", planet=0).data[0]
+        omega_frame = data.get(var="omega frame", planet=0).data[0].to("s-1")
     except (KeyError, IndexError):
         omega_frame = (1/data.loader.units["time"]).to("s-1")
     v_K = np.sqrt(G*Mstar/R).to("cm/s")
@@ -255,12 +259,14 @@ def velocity_polar_disgrid(data, Noutput):
         Mstar = 1*u.solMass
         print("Warning: Assumed a star mass of 1 solar mass!")
     try:
-        omega_frame = data.get(var="omega frame", planet=0).data[0]
+        omega_frame = data.get(var="omega frame", planet=0).data[0].to("s-1")
     except (KeyError, IndexError):
         omega_frame = (1/data.loader.units["time"]).to("s-1")
     v_K = np.sqrt(G*Mstar/R).to("cm/s")
-    v_Frame = omega_frame.to("s-1")*R
-    vazi_c = vazi.data + v_Frame
+    v_Frame = omega_frame.to("s-1")*R.to("cm")
+    print(vazi.data)
+    # vazi_c = vazi.data + v_Frame
+    vazi_c = vazi.data
 
     return roll_data(phi, vrad_c, vazi_c, v_K)
 
