@@ -150,7 +150,7 @@ def show_fit_overview_2D(vt, n=None, fig=None, bnd_lines=False, bnd_pnts=False, 
     if leg is not None:
         leg.remove()
     if len(vt.vortices) > 0:
-        ax.set_ylim(-0.5, 1)
+        ax.set_ylim(vt.levels[0], vt.levels[-1])
         xticks = ax.get_yticks()
         vallim = ax.get_ylim()
         try:
@@ -201,13 +201,15 @@ def show_fit_overview_2D(vt, n=None, fig=None, bnd_lines=False, bnd_pnts=False, 
     if xscale is not None:
         axes[1, 0].set_xscale(xscale)
 
-    for ax in [axes[1, 0], axes[1, 3]]:
-        ax.set_yticklabels(yticklabels)
+    # for ax in [axes[1, 0], axes[1, 3]]:
+    #     ax.set_yticklabels(yticklabels)
+    return fig
 
 
 def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
                                 bnd_pnts=True, show_fits=True, fit_contours=True,
-                                cbar_axes=None):
+                                cbar_axes=None, cmap="magma", cbar_orientation="horizontal",
+                                cbar_label=None):
     import matplotlib.patheffects as pe
     Xc = vt.radius
     Yc = vt.azimuth
@@ -220,19 +222,17 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
         levels = vt.levels
 
         Z = vt.vortensity
-        cmap = "magma"
         norm = matplotlib.colors.Normalize(vmin=levels[0], vmax=levels[-1])
         img = ax.pcolormesh(
             Xc, Yc, Z, cmap=cmap, norm=norm, rasterized=True, shading="auto")
 
         ax.contour(
-            Xc, Yc, Z, levels=levels[::2], colors=contour_colors, linewidths=contour_lw)
+            Xc, Yc, Z, levels=levels, colors=contour_colors, linewidths=contour_lw)
 
     elif varname == "surface_density":
         label = r"$\Sigma$"
 
         Z = vt.surface_density
-        cmap = "magma"
 
         # try:
         #     vmax = vt.vortices[0]["fits"]["surface_density"]["c"] + \
@@ -241,9 +241,12 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
         #     vmax = np.max(Z)
 
         vmax = np.max(Z)
-        vmin = 1e-3*vmax
+        vmin = max(1e-3*vmax, np.min(Z))
 
-        norm = matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax)
+        if vmax > 100*vmin:
+            norm = matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax)
+        else:
+            norm = matplotlib.colors.Normalize(vmin=0, vmax=vmax)
         img = ax.pcolormesh(
             Xc, Yc, Z, cmap=cmap, norm=norm, rasterized=True, shading="auto")
 
@@ -257,7 +260,8 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
     if n is None:
         if main_vortex is not None:
             vortices = [main_vortex] + \
-                [v for v in vt.vortices if v != main_vortex]
+                [v for v in vt.vortices if v["contour"]["detection"]
+                    ["uuid"] != main_vortex["contour"]["detection"]["uuid"]]
         else:
             vortices = []
     else:
@@ -282,20 +286,23 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
                 ax.axhline(cnt[key])
 
         if bnd_pnts:
-            for key in ["top", "bottom", "left", "right"]:
+            for key in ["pnt_xlow", "pnt_ylow", "pnt_xhigh", "pnt_yhigh"]:
                 x = Xc[cnt[key]]
                 y = Yc[cnt[key]]
-                ax.plot([x], [y], "x")
+                ax.scatter([x], [y], color="black", edgecolor="white")
+                # ax.annotate(key, (x,y))
 
         blow = -np.pi
         bup = np.pi
         L = bup - blow
-        if show_fits:
-            try:
-                lw = 1
-                path_effects = [
-                    pe.Stroke(linewidth=2*lw, foreground='w'), pe.Normal()]
 
+        if show_fits:
+            lw = 1
+            path_effects = [
+                pe.Stroke(linewidth=2*lw, foreground='w'), pe.Normal()]
+
+        if type(show_fits) == bool or "vortensity" in show_fits:
+            try:
                 r0 = vort["fits"]["vortensity"]["r0"]
                 sigma_r = vort["fits"]["vortensity"]["sigma_r"]
                 w = 2*np.sqrt(2*np.log(2))*sigma_r
@@ -312,7 +319,11 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
                 else:
                     plot_ellipse_periodic(
                         ax, r0, phi0, w, h, color=color_vortensity, ls="-", lw=lw)
+            except KeyError:
+                pass
 
+        if type(show_fits) == bool or "surface_density" in show_fits:
+            try:
                 r0 = vort["fits"]["surface_density"]["r0"]
                 sigma_r = vort["fits"]["surface_density"]["sigma_r"]
                 w = 2*np.sqrt(2*np.log(2))*sigma_r
@@ -327,6 +338,7 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
                 else:
                     plot_ellipse_periodic(
                         ax, r0, phi0, w, h, color="C2", ls="-", lw=lw)
+
             except KeyError:
                 pass
 
@@ -341,9 +353,11 @@ def show_fit_overview_2D_single(vt, varname, ax, n=None, bnd_lines=False,
     ax.set_ylim(-np.pi, np.pi)
 
     if cbar_axes is None:
-        cbar = ax.get_figure().colorbar(img, ax=ax, orientation="horizontal")
+        cbar = ax.get_figure().colorbar(img, ax=ax, orientation=cbar_orientation)
     else:
-        cbar = ax.get_figure().colorbar(img, ax=cbar_axes, orientation="horizontal")
+        cbar = ax.get_figure().colorbar(img, ax=cbar_axes, orientation=cbar_orientation)
+    if cbar_label is not None:
+        label = cbar_label
     cbar.set_label(label)
 
 
@@ -417,6 +431,12 @@ def show_radial_fit(vt, ax, key, n, ref="contour", fitcolor="C1", datacolor="C0"
     ref : str
         Reference for the vortex region (contour/vortensity/sigma).
     """
+    vals = select_fit_quantity(vt, key)
+    x = vt.radius[:, 0]
+    average_color = "C7"
+    ax.fill_between(x, np.min(vals, axis=1), np.max(
+        vals, axis=1), alpha=0.2, color=average_color)
+    ax.plot(x, np.average(vals, axis=1), color=average_color, alpha=0.4)
     try:
         vortex = vt.vortices[n]
     except IndexError:
@@ -426,12 +446,10 @@ def show_radial_fit(vt, ax, key, n, ref="contour", fitcolor="C1", datacolor="C0"
         center = ref if center is None else center
         inds = select_center_inds(vt, vortex, center)
         mask_r, mask_phi = select_fit_region(vt, vortex, ref)
-        vals = select_fit_quantity(vt, key)
 
         mask = mask_r
 
         y = vals[:, inds[1]]
-        x = vt.radius[:, 0]
 
         ax.plot(x, y, label=f"data slice n={n}", color=datacolor)
 

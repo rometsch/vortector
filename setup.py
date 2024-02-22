@@ -11,8 +11,9 @@ setup(
     package_dir={'': 'src'},
     packages=find_namespace_packages(where="src"),
     install_requires=[
-        "numpy", "matplotlib", "opencv-python"
+        "numpy", "matplotlib", "opencv-python", "scipy", "numba"
     ],
+    zip_safe=False,
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",

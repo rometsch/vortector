@@ -127,3 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+synthvort_examples
+test
+simulation_data_cache
